@@ -131,6 +131,71 @@ def update_market():
     return jsonify({"status": 200, "msg": "success" if result else "failure"})
 
 
+@message_bp.route("/get_simple_marketing_user", methods=["POST"])
+@token_required
+def get_simple_marketing_user():
+    data = request.json
+    task_id = data.get("task_id", "")
+    task_step_type = data.get("task_step_type", TaskStepType.MARKETING)
+
+    try:
+        user_id = g.current_user.user_id
+    except Exception as e:
+        user_id = "super_admin"
+
+    task = task_repo.get_task_by_id(task_id, user_id)
+    if task is None:
+        return jsonify({"status": 400, "msg": "user and task are not correct"}), 400
+
+    task_step = task_step_repo.get_task_step_by_task_id_and_type(task_id, TaskStepType.MARKETING)
+    if task_step is None:
+        task_step_repo.create_task_step(task_id, task_step_type, TaskStepStatus.INITIAL)
+
+    if task.platform == "dy":
+        intent_comments, intent_count = douyin_comment_repo.get_intent_customers_by_task_id(task_id)
+    else:
+        intent_comments, intent_count = xhs_comment_repo.get_intent_customers_by_task_id(task_id)
+
+    next_comment = None
+    for comment in intent_comments:
+        if comment.market_result is None:
+            next_comment = comment
+            break
+
+    if next_comment is None:
+        return jsonify({"status": 200, "msg": "success", "comment": None})
+
+    if task.platform == "dy":
+        comment_data = {
+            "user_link": f"https://www.douyin.com/user/{next_comment.sec_uid}",
+            "comment_id": next_comment.comment_id,
+            "task_id": task_id,
+            "platform": task.platform,
+            "user_id": next_comment.sec_uid,
+            "用户昵称": next_comment.nickname,
+            "IP地址": next_comment.ip_location,
+            "评论内容": next_comment.content,
+            "私信结果": next_comment.market_result,
+            "评论时间": datetime.fromtimestamp(next_comment.create_time).strftime('%Y-%m-%d')
+        }
+    else:
+        create_time_seconds = next_comment.create_time / 1000
+        comment_data = {
+            "user_link": f"https://www.xiaohongshu.com/user/profile/{next_comment.user_id}",
+            "comment_id": next_comment.comment_id,
+            "task_id": task_id,
+            "platform": task.platform,
+            "user_id": next_comment.user_id,
+            "用户昵称": next_comment.nickname,
+            "IP地址": next_comment.ip_location,
+            "评论内容": next_comment.content,
+            "私信结果": next_comment.market_result,
+            "评论时间": datetime.fromtimestamp(create_time_seconds).strftime('%Y-%m-%d')
+        }
+
+    return jsonify({"status": 200, "msg": "success", "comment": comment_data})
+
+
 @message_bp.route("/marketing_progress", methods=['GET'])
 @token_required
 def marketing_progress():
@@ -304,5 +369,4 @@ def upload_to_tencent(file_path):
         return url
     except Exception as e:
         raise Exception(f"上传到腾讯云失败: {e}")
-
 
