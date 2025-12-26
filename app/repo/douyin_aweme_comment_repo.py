@@ -189,3 +189,30 @@ class DouyinAwemeCommentRepo:
             print(f"Error deleting comments for task_id {task_id}: {e}")
             return False
 
+    def batch_update_comments(self, updates, task_id):
+        """Batch update comments. `updates` is a list of tuples (comment_id, extra_data)."""
+        try:
+            for comment_id, extra_data in updates:
+                comment = self.get_comment_by_comment_id(comment_id, task_id)
+                if not comment:
+                    continue
+                comment.extra_data = extra_data
+                comment.last_modify_ts = get_current_timestamp()
+                intent_customer = extra_data.get('意向客户') if isinstance(extra_data, dict) else None
+                if intent_customer is not None:
+                    comment.intent_customer = intent_customer
+            self.db.session.commit()
+            try:
+                self.db.session.remove()
+            except Exception:
+                pass
+            return True
+        except SQLAlchemyError as e:
+            self.db.session.rollback()
+            try:
+                self.db.session.remove()
+            except Exception:
+                pass
+            print(f"Error in batch_update_comments for task_id {task_id}: {e}")
+            return False
+

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from threading import Lock, Thread, Event
 from multiprocessing import Process, Queue
+from concurrent.futures import ProcessPoolExecutor
 
 import openai
 import pandas as pd
@@ -107,6 +108,57 @@ def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
             pass
 
 
+def _gpt_worker_process(comment_data, analysis_request, output_fields_data):
+    """ProcessPool worker version that returns result string."""
+    try:
+        import json
+        from openai import OpenAI
+        # lightweight field and comment reconstruction
+        class FieldObj:
+            def __init__(self, key, explanation):
+                self.key = key
+                self.explanation = explanation
+
+        class C:
+            pass
+
+        comment = C()
+        for k, v in comment_data.items():
+            setattr(comment, k, v)
+
+        output_fields = []
+        try:
+            for f in output_fields_data:
+                if isinstance(f, dict):
+                    output_fields.append(FieldObj(f.get('key'), f.get('explanation')))
+                else:
+                    output_fields.append(f)
+        except Exception:
+            output_fields = output_fields_data
+
+        try:
+            deepseek_key = config.DEEPSEEK_API_KEY
+            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com/")
+            output_fields_str = "\n".join([f"{f.key}: {f.explanation}" for f in output_fields])
+            system_prompt = f"""
+                #任务背景和需求
+                {analysis_request}
+
+                # 结果
+                请输出一个包含以下键的JSON对象：
+                {output_fields_str}
+                """
+            user_prompt = f"评论：{getattr(comment, 'content', '')}\n用户昵称：{getattr(comment, 'nickname', '')}\nIP地址位置：{getattr(comment, 'ip_location', '')}"
+            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+            response = client.chat.completions.create(model="deepseek-chat", messages=messages)
+            result = response.choices[0].message.content
+        except Exception:
+            result = json.dumps({})
+        return result
+    except Exception:
+        return None
+
+
 class CommentAnalysisService:
     def __init__(self):
         self.task_repo = TaskRepo()
@@ -120,6 +172,14 @@ class CommentAnalysisService:
         self._stop_events = {}
         # track child processes per task for forcible termination
         self._child_processes = {}
+        # persistent process pool for model calls
+        pool_size = getattr(config, 'ANALYSIS_PROCESS_POOL_SIZE', None) or getattr(config, 'ANALYSIS_THREAD_NUM', 4)
+        self._process_pool = ProcessPoolExecutor(max_workers=pool_size)
+        # track futures per task for potential cancellation
+        self._child_futures = {}
+        # pending DB updates per task: list of (comment_id, extra_data)
+        self._pending_updates = {}
+        self._db_batch_size = getattr(config, 'ANALYSIS_DB_BATCH_SIZE', 50)
 
     def stop_analysis(self, task_id, user_id):
         key = (str(task_id), str(user_id))
@@ -138,6 +198,14 @@ class CommentAnalysisService:
                         pass
                 # clear list
                 self._child_processes[key] = []
+                # cancel any pending futures submitted to process pool
+                futs = self._child_futures.get(key, [])
+                for f in list(futs):
+                    try:
+                        f.cancel()
+                    except Exception:
+                        pass
+                self._child_futures[key] = []
             return True
         return False
 
@@ -207,33 +275,28 @@ class CommentAnalysisService:
             except Exception:
                 output_fields_data = output_fields
 
-            return_q = Queue()
-            p = Process(target=_gpt_worker, args=(comment_data, request.analysis_request, output_fields_data, return_q))
-
-            # register and start process
-            with self.lock:
-                procs = self._child_processes.setdefault(key, [])
-                procs.append(p)
-            p.start()
-
-            result = None
+            # submit to persistent process pool
+            future = None
             try:
+                future = self._process_pool.submit(_gpt_worker_process, comment_data, request.analysis_request, output_fields_data)
+                with self.lock:
+                    futs = self._child_futures.setdefault(key, [])
+                    futs.append(future)
+
                 timeout = getattr(config, 'ANALYSIS_CALL_TIMEOUT', 60)
-                result = return_q.get(timeout=timeout)
-            except Exception:
                 try:
-                    if p.is_alive():
-                        p.terminate()
+                    result = future.result(timeout=timeout)
                 except Exception:
-                    pass
+                    try:
+                        future.cancel()
+                    except Exception:
+                        pass
+                    result = None
             finally:
-                try:
-                    p.join(timeout=2)
-                except Exception:
-                    pass
                 with self.lock:
                     try:
-                        self._child_processes[key].remove(p)
+                        if future in self._child_futures.get(key, []):
+                            self._child_futures[key].remove(future)
                     except Exception:
                         pass
 
@@ -250,10 +313,10 @@ class CommentAnalysisService:
                 except Exception:
                     json_result = self._generate_default_json_result(output_fields)
 
-            if platform == "dy":
-                self.douyin_comment_repo.update_comment_by_comment_id(comment.comment_id, json_result, task_id)
-            else:
-                self.xhs_comment_repo.update_comment_by_comment_id(comment.comment_id, json_result, task_id)
+            # append to pending updates (batch commit handled by flusher)
+            with self.lock:
+                pending = self._pending_updates.setdefault(key, [])
+                pending.append((comment.comment_id, json_result))
 
 
         @copy_current_request_context
@@ -313,14 +376,64 @@ class CommentAnalysisService:
                             pass
                 time.sleep(1)
 
+        # flusher thread: batch commit pending updates periodically or when batch size reached
+        analysis_done = Event()
+
+        @copy_current_request_context
+        def flush_pending_worker():
+            while True:
+                if stop_event.is_set() or analysis_done.is_set():
+                    # flush remaining then exit
+                    with current_app.app_context():
+                        with self.lock:
+                            pending = self._pending_updates.get(key, [])
+                            if pending:
+                                to_flush = list(pending)
+                                self._pending_updates[key] = []
+                            else:
+                                to_flush = []
+                        if to_flush:
+                            try:
+                                if task.platform == 'dy':
+                                    self.douyin_comment_repo.batch_update_comments(to_flush, task_id)
+                                else:
+                                    self.xhs_comment_repo.batch_update_comments(to_flush, task_id)
+                            except Exception:
+                                pass
+                    break
+
+                # regular flush
+                with self.lock:
+                    pending = self._pending_updates.get(key, [])
+                    if len(pending) >= self._db_batch_size:
+                        to_flush = pending[:self._db_batch_size]
+                        self._pending_updates[key] = pending[self._db_batch_size:]
+                    else:
+                        to_flush = []
+                if to_flush:
+                    with current_app.app_context():
+                        try:
+                            if task.platform == 'dy':
+                                self.douyin_comment_repo.batch_update_comments(to_flush, task_id)
+                            else:
+                                self.xhs_comment_repo.batch_update_comments(to_flush, task_id)
+                        except Exception:
+                            pass
+                time.sleep(0.5)
+
         progress_thread = Thread(target=update_progress)
         analysis_thread = Thread(target=analyze_comments)
+        flush_thread = Thread(target=flush_pending_worker)
 
         progress_thread.start()
         analysis_thread.start()
+        flush_thread.start()
 
         progress_thread.join()
         analysis_thread.join()
+        # signal flusher to finish flushing remaining updates
+        analysis_done.set()
+        flush_thread.join()
 
         # Ensure any remaining child processes are terminated and joined
         try:
