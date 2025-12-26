@@ -16,24 +16,24 @@ REDIS_DB_PWD = os.getenv("REDIS_DB_PWD", "123456")  # your redis password
 # 数据库配置
 if ENVIRONMENT == "production":
     DB_USER = os.getenv("PROD_DB_USER", "root")
-    DB_PWD = os.getenv("PROD_DB_PWD", "698698")
+    DB_PWD = os.getenv("PROD_DB_PWD", "")
     DB_URI = os.getenv("PROD_DB_URI", "127.0.0.1")
-    DB_PORT = os.getenv("PROD_DB_PORT", "3307")
+    DB_PORT = os.getenv("PROD_DB_PORT", "3306")
     DB_NAME = os.getenv("PROD_DB_NAME", "media_crawler")
 else:
     DB_USER = os.getenv("DEV_DB_USER", "root")
-    DB_PWD = os.getenv("DEV_DB_PWD", "698698")
+    DB_PWD = os.getenv("DEV_DB_PWD", "")
     DB_URI = os.getenv("DEV_DB_URI", "127.0.0.1")
-    DB_PORT = os.getenv("DEV_DB_PORT", "3307")
+    DB_PORT = os.getenv("DEV_DB_PORT", "3306")
     DB_NAME = os.getenv("DEV_DB_NAME", "media_crawler")
     print(DB_USER, DB_PWD, DB_URI, DB_PORT, DB_NAME)
 
 
 # mysql config
-DEV_USER_DB_PWD = os.getenv("DEV_USER_DB_PWD", "698698")  # your relation db password
+DEV_USER_DB_PWD = os.getenv("DEV_USER_DB_PWD", "")  # your relation db password
 DEV_USER_DB_USER = os.getenv("DEV_USER_DB_USER", "root")
 DEV_USER_DB_URI = os.getenv("DEV_USER_DB_URI", "127.0.0.1")
-DEV_USER_DB_PORT = os.getenv("DEV_USER_DB_PORT", "3307")
+DEV_USER_DB_PORT = os.getenv("DEV_USER_DB_PORT", "3306")
 DEV_USER_DB_NAME = os.getenv("DEV_USER_DB_NAME", "media_crawler")
 
 RELATION_DB_URL = f"mysql://{DB_USER}:{DB_PWD}@{DB_URI}:{DB_PORT}/{DB_NAME}"
