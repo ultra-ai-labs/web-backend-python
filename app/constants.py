@@ -3,12 +3,14 @@ class TaskStepStatus:
     RUNNING = 2
     FINISH = 3
     DELETE = 4
+    STOPPED = 5
 
     STATUS_DICT = {
         INITIAL: "initial",
         RUNNING: "running",
         FINISH: "finish",
-        DELETE: "delete"
+        DELETE: "delete",
+        STOPPED: "stopped"
     }
 
     @classmethod

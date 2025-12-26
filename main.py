@@ -50,6 +50,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # 全局字典存储任务状态
 task_status = {}
 task_output_paths = {}
+# 全局停止事件，用于 /start-analysis 任务的停止控制
+task_stop_events = {}
 
 # 七牛云
 AccessKey = "QC7jpcVf0z25_HfdSVHJnZiUNcWdwvZoK1u6oxgn"
@@ -369,9 +371,26 @@ def start_analysis():
     request_data = AnalysisRequest(**data)
     task_id = task_manager.create_task("analysis", request_data=request_data)
 
+    # create a stop event for this task
+    task_stop_events[task_id] = threading.Event()
+
     thread = threading.Thread(target=analyze_file, args=(request_data, task_id))
     thread.start()
     return jsonify({"message": "Analysis started.", "task_id": task_id})
+
+
+@app.route('/stop-analysis', methods=['POST'])
+def stop_analysis_main():
+    data = request.json
+    task_id = data.get('task_id')
+    if not task_id:
+        return jsonify({"error": "Missing task_id"}), 400
+    event = task_stop_events.get(task_id)
+    if not event:
+        return jsonify({"error": "No running task found"}), 404
+    event.set()
+    task_manager.update_task_status(task_id, "stopped")
+    return jsonify({"status": "stopping", "task_id": task_id}), 200
 
 
 @app.route('/analysis-progress', methods=['GET'])
@@ -474,7 +493,13 @@ def analyze_file(request: AnalysisRequest, task_id):
 
     skipped_count = 0
 
+    stop_event = task_stop_events.get(task_id)
+
     for index, row in df.iterrows():
+        # check stop event
+        if stop_event and stop_event.is_set():
+            task_manager.update_task_status(task_id, "stopped")
+            break
         if pd.notna(row[output_fields[0].key]):
             skipped_count += 1
             continue

@@ -92,6 +92,29 @@ def run_analysis():
     return jsonify({"status": 200, "msg": "success", "data": {"task_id": task_id}})
 
 
+@analysis_bp.route("/stop_analysis", methods=["POST"])
+@token_required
+def stop_analysis():
+    try:
+        data = request.json
+        task_id = data.get("task_id")
+        user_id = get_user_id()
+        if not task_id:
+            return jsonify({"status": 400, "msg": "Missing task_id"}), 400
+        stopped = comment_analysis_service.stop_analysis(task_id, user_id)
+        if stopped:
+            try:
+                # mark task step as stopped in DB
+                task_step_repo.update_task_step_status(task_id, TaskStepType.ANALYSIS, TaskStepStatus.STOPPED)
+            except Exception:
+                pass
+            return jsonify({"status": 200, "msg": "Analysis stopped"}), 200
+        else:
+            return jsonify({"status": 404, "msg": "No running analysis found for this task"}), 404
+    except Exception as e:
+        return jsonify({"status": 500, "msg": f"error: {e}"}), 500
+
+
 @analysis_bp.route("/progress", methods=["GET"])
 @token_required
 def get_progress():

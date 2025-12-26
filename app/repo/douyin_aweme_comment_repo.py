@@ -45,6 +45,10 @@ class DouyinAwemeCommentRepo:
                 if intent_customer is not None:
                     comment.intent_customer = intent_customer
                 self.db.session.commit()
+                try:
+                    self.db.session.remove()
+                except Exception:
+                    pass
                 return True
             return False
         except SQLAlchemyError as e:
@@ -60,6 +64,10 @@ class DouyinAwemeCommentRepo:
                     comment.market_result = market_result
                     comment.last_modify_ts = get_current_timestamp()
                 self.db.session.commit()
+                try:
+                    self.db.session.remove()
+                except Exception:
+                    pass
                 return True
             return False
         except SQLAlchemyError as e:
@@ -167,9 +175,17 @@ class DouyinAwemeCommentRepo:
         try:
             DouyinAwemeComment.query.filter_by(task_id=task_id).delete()
             self.db.session.commit()
+            try:
+                self.db.session.remove()
+            except Exception:
+                pass
             return True
         except SQLAlchemyError as e:
             self.db.session.rollback()
+            try:
+                self.db.session.remove()
+            except Exception:
+                pass
             print(f"Error deleting comments for task_id {task_id}: {e}")
             return False
 

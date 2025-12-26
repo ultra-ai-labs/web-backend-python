@@ -26,6 +26,11 @@ class TaskStepRepo:
             )
             self.db.session.add(task_step)
             self.db.session.commit()
+            try:
+                # ensure session removed for thread safety
+                self.db.session.remove()
+            except Exception:
+                pass
         return step_id
 
     def update_task_step_status(self, task_id, step_type, state=None, progress=None, base_url=None):
@@ -40,6 +45,10 @@ class TaskStepRepo:
                     task_step.url = base_url
                 task_step.update_time = get_current_timestamp()  # 更新更新时间
                 self.db.session.commit()
+                try:
+                    self.db.session.remove()
+                except Exception:
+                    pass
 
 
     def get_task_steps_by_task_id(self, task_id):

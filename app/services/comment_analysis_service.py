@@ -4,7 +4,8 @@ import os
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
+from multiprocessing import Process, Queue
 
 import openai
 import pandas as pd
@@ -41,6 +42,71 @@ def retry_on_exception(max_retries=3, delay=1, fallback_func=None):
     return decorator
 
 
+def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
+    """Worker to run inside a separate process to perform model call.
+    It returns the analysis result (string) via return_q.put(result_str).
+    comment_data is a dict of necessary fields for gpt4_analysis.
+    """
+    try:
+        # import here to ensure subprocess has needed modules
+        import os
+        from openai import OpenAI
+        import openai
+        import json
+        # Create lightweight field objects expected by gpt4_analysis
+        class FieldObj:
+            def __init__(self, key, explanation):
+                self.key = key
+                self.explanation = explanation
+
+        # Recreate minimal comment-like object
+        class C:
+            pass
+
+        comment = C()
+        for k, v in comment_data.items():
+            setattr(comment, k, v)
+
+        # convert output_fields_data (list of dicts) into FieldObj instances if needed
+        output_fields = []
+        try:
+            for f in output_fields_data:
+                if isinstance(f, dict):
+                    output_fields.append(FieldObj(f.get('key'), f.get('explanation')))
+                else:
+                    # assume already object-like
+                    output_fields.append(f)
+        except Exception:
+            output_fields = output_fields_data
+
+        # Make a lightweight direct request to Deepseek (avoid instantiating full service)
+        try:
+            deepseek_key = config.DEEPSEEK_API_KEY
+            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com/")
+            # build messages similar to gpt4_analysis
+            output_fields_str = "\n".join([f"{f.key}: {f.explanation}" for f in output_fields])
+            system_prompt = f"""
+                #任务背景和需求
+                {analysis_request}
+
+                # 结果
+                请输出一个包含以下键的JSON对象：
+                {output_fields_str}
+                """
+            user_prompt = f"评论：{getattr(comment, 'content', '')}\n用户昵称：{getattr(comment, 'nickname', '')}\nIP地址位置：{getattr(comment, 'ip_location', '')}"
+            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+            response = client.chat.completions.create(model="deepseek-chat", messages=messages)
+            result = response.choices[0].message.content
+        except Exception:
+            result = json.dumps({})
+        return_q.put(result)
+    except Exception:
+        try:
+            return_q.put(None)
+        except Exception:
+            pass
+
+
 class CommentAnalysisService:
     def __init__(self):
         self.task_repo = TaskRepo()
@@ -50,6 +116,30 @@ class CommentAnalysisService:
         self.lock = Lock() # 初始化锁
         self.xhs_comment_repo = XhsNoteCommentRepo()
         self.client = self._create_client()
+        # per-task stop events: key -> (task_id, user_id)
+        self._stop_events = {}
+        # track child processes per task for forcible termination
+        self._child_processes = {}
+
+    def stop_analysis(self, task_id, user_id):
+        key = (str(task_id), str(user_id))
+        event = self._stop_events.get(key)
+        if event:
+            event.set()
+            # terminate any child processes for this task
+            with self.lock:
+                procs = self._child_processes.get(key, [])
+                for p in list(procs):
+                    try:
+                        if p.is_alive():
+                            p.terminate()
+                            p.join(timeout=5)
+                    except Exception:
+                        pass
+                # clear list
+                self._child_processes[key] = []
+            return True
+        return False
 
 
     def _create_client(self):
@@ -84,14 +174,81 @@ class CommentAnalysisService:
 
         results_queue = []
 
+        # create stop event for this task
+        key = (str(task_id), str(user_id))
+        stop_event = Event()
+        self._stop_events[key] = stop_event
+
         @copy_current_request_context
         @retry_on_exception(max_retries=3, delay=2, fallback_func=self.fallback_analysis)
         def analyze_comments_chunk(comment, task_id, platform, request, output_fields):
+            if stop_event.is_set():
+                return
             if comment.extra_data is not None:
                 return
-            result = self.gpt4_analysis(comment, request.analysis_request, output_fields)
-            clean_result = result.replace("```json", "").replace("```", "").strip()
-            json_result = json.loads(clean_result)
+
+            # prepare serializable comment data for subprocess
+            comment_data = {
+                'content': getattr(comment, 'content', ''),
+                'ip_location': getattr(comment, 'ip_location', ''),
+                'user_signature': getattr(comment, 'user_signature', ''),
+                'nickname': getattr(comment, 'nickname', ''),
+                'comment_id': getattr(comment, 'comment_id', None),
+                'user_id': getattr(comment, 'user_id', None),
+                'aweme_id': getattr(comment, 'aweme_id', None),
+                'note_id': getattr(comment, 'note_id', None)
+            }
+
+            # prepare output fields as plain dicts for pickling
+            output_fields_data = []
+            try:
+                for f in output_fields:
+                    output_fields_data.append({'key': f.key, 'explanation': f.explanation})
+            except Exception:
+                output_fields_data = output_fields
+
+            return_q = Queue()
+            p = Process(target=_gpt_worker, args=(comment_data, request.analysis_request, output_fields_data, return_q))
+
+            # register and start process
+            with self.lock:
+                procs = self._child_processes.setdefault(key, [])
+                procs.append(p)
+            p.start()
+
+            result = None
+            try:
+                timeout = getattr(config, 'ANALYSIS_CALL_TIMEOUT', 60)
+                result = return_q.get(timeout=timeout)
+            except Exception:
+                try:
+                    if p.is_alive():
+                        p.terminate()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    p.join(timeout=2)
+                except Exception:
+                    pass
+                with self.lock:
+                    try:
+                        self._child_processes[key].remove(p)
+                    except Exception:
+                        pass
+
+            if stop_event.is_set():
+                return
+
+            # process result
+            if not result:
+                json_result = self._generate_default_json_result(output_fields)
+            else:
+                try:
+                    clean_result = result.replace("```json", "").replace("```", "").strip()
+                    json_result = json.loads(clean_result)
+                except Exception:
+                    json_result = self._generate_default_json_result(output_fields)
 
             if platform == "dy":
                 self.douyin_comment_repo.update_comment_by_comment_id(comment.comment_id, json_result, task_id)
@@ -102,6 +259,9 @@ class CommentAnalysisService:
         @copy_current_request_context
         def update_progress():
             while True:
+                if stop_event.is_set():
+                    print(f"[CommentAnalysisService] stop_event set for task {task_id}")
+                    break
                 with current_app.app_context():
                     total_count = get_total_count()
                     if task.platform == "dy":
@@ -121,6 +281,9 @@ class CommentAnalysisService:
         @copy_current_request_context
         def analyze_comments():
             while True:
+                if stop_event.is_set():
+                    print(f"[CommentAnalysisService] analyze loop stop for task {task_id}")
+                    break
                 comments = get_comments()
                 if not comments:
                     break
@@ -145,7 +308,7 @@ class CommentAnalysisService:
 
                     for future in concurrent.futures.as_completed(futures):
                         try:
-                            results_queue.extend(future.result())
+                            results_queue.extend(future.result() or [])
                         except Exception as e:
                             pass
                 time.sleep(1)
@@ -158,6 +321,49 @@ class CommentAnalysisService:
 
         progress_thread.join()
         analysis_thread.join()
+
+        # Ensure any remaining child processes are terminated and joined
+        try:
+            with self.lock:
+                procs = self._child_processes.get(key, [])
+                for p in list(procs):
+                    try:
+                        if p.is_alive():
+                            print(f"[CommentAnalysisService] terminating leftover process {p.pid} for task {task_id}")
+                            p.terminate()
+                            p.join(timeout=5)
+                    except Exception:
+                        pass
+                self._child_processes[key] = []
+        except Exception:
+            pass
+
+        # cleanup stop event
+        if key in self._stop_events:
+            del self._stop_events[key]
+
+        if stop_event.is_set():
+            print(f"[CommentAnalysisService] task {task_id} was stopped before completion")
+            # mark task step as stopped and keep current progress
+            try:
+                with current_app.app_context():
+                    # determine current completed count
+                    if task.platform == "dy":
+                        n_comments = self.douyin_comment_repo.get_comments_by_task_id(task_id)
+                    else:
+                        n_comments = self.xhs_comment_repo.get_comments_by_task_id(task_id)
+                    completed_count = sum(1 for comment in n_comments if comment.extra_data is not None)
+
+                    # ensure a task step exists; create if missing
+                    existing = self.task_step_repo.get_task_step_by_task_id_and_type(task_id, TaskStepType.ANALYSIS)
+                    if not existing:
+                        self.task_step_repo.create_task_step(task_id, TaskStepType.ANALYSIS, TaskStepStatus.STOPPED)
+                    else:
+                        self.task_step_repo.update_task_step_status(task_id, TaskStepType.ANALYSIS, TaskStepStatus.STOPPED, completed_count)
+                    print(f"[CommentAnalysisService] marked task {task_id} STOPPED with progress {completed_count}")
+            except Exception as e:
+                print(f"[CommentAnalysisService] failed to mark STOPPED for task {task_id}: {e}")
+            return
 
         total_count = get_total_count()
         if total_count == 0:

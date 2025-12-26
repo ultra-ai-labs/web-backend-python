@@ -15,6 +15,11 @@ def create_app():
     # 配置跨域
     CORS(n_app)
 
+    # reduce noisy third-party library logging
+    import logging
+    for noisy in ("httpx", "qcloud_cos.cos_client", "qcloud_cos"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     # 初始化拓展
     # with n_app.app_context():
     db.init_app(n_app)
