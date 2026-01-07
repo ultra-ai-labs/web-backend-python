@@ -344,12 +344,13 @@ CREATE TABLE `tieba_note`  (
 -- ----------------------------
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users`  (
-  `user_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
-  `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '用户名',
+  `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
+  `username` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '用户名',
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '密码',
-  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '邮箱',
-  `created_at` datetime NULL DEFAULT NULL COMMENT '创建时间',
-  `updated_at` datetime NULL DEFAULT NULL COMMENT '更新时间',
+  `email` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '邮箱',
+  `expire_time` bigint NULL DEFAULT NULL COMMENT '账号过期时间戳',
+  `create_time` bigint NOT NULL COMMENT '创建时间戳',
+  `update_time` bigint NULL DEFAULT NULL COMMENT '更新时间戳',
   PRIMARY KEY (`user_id`) USING BTREE,
   UNIQUE INDEX `username`(`username` ASC) USING BTREE,
   UNIQUE INDEX `email`(`email` ASC) USING BTREE
@@ -602,3 +603,37 @@ CREATE TABLE `zhihu_creator`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '知乎创作者' ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ----------------------------
+-- Table structure for analysis_module
+-- ----------------------------
+DROP TABLE IF EXISTS `analysis_module`;
+CREATE TABLE `analysis_module` (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '使用的用户ID',
+  `service_introduction` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '分析描述模板的服务介绍',
+  `customer_description` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '分析描述模板的客户描述',
+  `default` int NOT NULL DEFAULT 0 COMMENT '默认值',
+  `create_time` bigint NOT NULL COMMENT '创建时间戳',
+  `update_time` bigint NULL DEFAULT NULL COMMENT '更新时间戳',
+  `delete_time` bigint NULL DEFAULT NULL COMMENT '删除时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_analysis_module_user_id`(`user_id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '分析模块' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for quota
+-- ----------------------------
+DROP TABLE IF EXISTS `quota`;
+CREATE TABLE `quota` (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
+  `total_quota` bigint NOT NULL DEFAULT 0 COMMENT '总额度',
+  `used_quota` bigint NOT NULL DEFAULT 0 COMMENT '已使用额度',
+  `period_start` bigint NULL DEFAULT NULL COMMENT '配额周期开始时间戳',
+  `period_end` bigint NULL DEFAULT NULL COMMENT '配额周期结束时间戳',
+  `create_time` bigint NOT NULL COMMENT '创建时间戳',
+  `update_time` bigint NULL DEFAULT NULL COMMENT '更新时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_quota_user_id`(`user_id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '配额表' ROW_FORMAT = Dynamic;

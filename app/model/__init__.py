@@ -11,3 +11,5 @@ from app.model.xhs_note import XhsNote
 from app.model.xhs_note_comment import XhsNoteComment
 from app.model.task import Task
 from app.model.task_step import TaskStep
+from app.model.quota import Quota
+from app.model.user import User

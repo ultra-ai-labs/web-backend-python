@@ -39,15 +39,42 @@ user_repo = UserRepo()
 
 @crawler_bp.route("/login", methods=["POST"])
 def login():
-    data = request.args
-    username = data.get("username")
-    password = data.get("password")
+    # Accept JSON body, form data, or query params so callers don't have to match a single style.
+    data = request.get_json(silent=True) or request.form or request.args
+    username = data.get("username") if data else None
+    password = data.get("password") if data else None
+
+    if not username or not password:
+        return jsonify({"status": 400, "msg": "username and password required"}), 400
 
     user = user_repo.get_user_by_username(username)
     if user is None:
         return jsonify({"status": 401, "msg": "User not found"}), 401
 
-    if not CommentCrawlerService.check_password_hash(password, user.password.encode('utf-8')):
+    stored_pw = user.password or ""
+    ok = False
+    auth_method = "plain"
+
+    try:
+        hashed_pw_bytes = None
+        if isinstance(stored_pw, bytes):
+            hashed_pw_bytes = stored_pw
+        elif isinstance(stored_pw, str) and stored_pw.startswith("$2") and len(stored_pw) > 20:
+            hashed_pw_bytes = stored_pw.encode("utf-8")
+
+        if hashed_pw_bytes:
+            auth_method = "bcrypt"
+            ok = CommentCrawlerService.check_password_hash(password, hashed_pw_bytes)
+        if not ok:
+            # fallback to plain-text match for legacy users
+            auth_method = f"{auth_method}+plain" if hashed_pw_bytes else "plain"
+            stored_pw_text = stored_pw.decode("utf-8") if isinstance(stored_pw, bytes) else str(stored_pw)
+            ok = (password == (stored_pw_text or ""))
+    except Exception as e:
+        print(f"[login] error comparing password for user {username}: {e}")
+        return jsonify({"status": 500, "msg": "internal error"}), 500
+
+    if not ok:
         return jsonify({"status": 401, "msg": "User password isn't correct"}), 401
 
     user_id = user.user_id

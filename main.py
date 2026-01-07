@@ -65,8 +65,9 @@ q = qiniu.Auth(AccessKey, SecretKey)
 current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 analysis_name = f"analyzed_comments_{current_time}"
 
-# 配置跨域
-CORS(app)
+# 配置跨域，允许自定义头 x-admin-password 用于管理员操作
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "x-admin-password"])
 # ------------------------Data Analysis Initialize----------------
 # 获取桌面路径
 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")

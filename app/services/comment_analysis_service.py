@@ -22,6 +22,7 @@ from app.repo.douyin_aweme_comment_repo import DouyinAwemeCommentRepo
 from app.repo.task_repo import TaskRepo
 from app.repo.task_step_repo import TaskStepRepo
 from app.repo.xhs_note_comment_repo import XhsNoteCommentRepo
+from app.repo.quota_repo import QuotaRepo
 from tools import utils
 
 
@@ -164,6 +165,7 @@ class CommentAnalysisService:
         self.task_repo = TaskRepo()
         self.task_step_repo = TaskStepRepo()
         self.douyin_comment_repo = DouyinAwemeCommentRepo()
+        self.quota_repo = QuotaRepo()
         self.qiniu_auth = qiniu.Auth(config.AccessKey, config.SecretKey)
         self.lock = Lock() # 初始化锁
         self.xhs_comment_repo = XhsNoteCommentRepo()
@@ -393,11 +395,23 @@ class CommentAnalysisService:
                             else:
                                 to_flush = []
                         if to_flush:
+                            # deduplicate by comment_id, keep last result for each id
+                            uniq = {cid: data for cid, data in to_flush}
+                            uniq_list = list(uniq.items())
                             try:
                                 if task.platform == 'dy':
-                                    self.douyin_comment_repo.batch_update_comments(to_flush, task_id)
+                                    updated_count = self.douyin_comment_repo.batch_update_comments(uniq_list, task_id)
                                 else:
-                                    self.xhs_comment_repo.batch_update_comments(to_flush, task_id)
+                                    updated_count = self.xhs_comment_repo.batch_update_comments(uniq_list, task_id)
+                                # increment user's used_quota by number of actually-updated comments
+                                try:
+                                    if updated_count and int(updated_count) > 0:
+                                        quota = self.quota_repo.get_quota_by_user_id(user_id)
+                                        current_used = int(quota.used_quota or 0) if quota else 0
+                                        new_used = current_used + int(updated_count)
+                                        self.quota_repo.update_used_quota(user_id, new_used)
+                                except Exception:
+                                    pass
                             except Exception:
                                 pass
                     break
@@ -413,10 +427,22 @@ class CommentAnalysisService:
                 if to_flush:
                     with current_app.app_context():
                         try:
+                            # dedupe
+                            uniq = {cid: data for cid, data in to_flush}
+                            uniq_list = list(uniq.items())
                             if task.platform == 'dy':
-                                self.douyin_comment_repo.batch_update_comments(to_flush, task_id)
+                                updated_count = self.douyin_comment_repo.batch_update_comments(uniq_list, task_id)
                             else:
-                                self.xhs_comment_repo.batch_update_comments(to_flush, task_id)
+                                updated_count = self.xhs_comment_repo.batch_update_comments(uniq_list, task_id)
+                            # increment used_quota
+                            try:
+                                if updated_count and int(updated_count) > 0:
+                                    quota = self.quota_repo.get_quota_by_user_id(user_id)
+                                    current_used = int(quota.used_quota or 0) if quota else 0
+                                    new_used = current_used + int(updated_count)
+                                    self.quota_repo.update_used_quota(user_id, new_used)
+                            except Exception:
+                                pass
                         except Exception:
                             pass
                 time.sleep(0.5)
@@ -510,13 +536,16 @@ class CommentAnalysisService:
     def _generate_default_json_result(self, output_fields):
         default_json_result = {}
         for field in output_fields:
-            key = field.key
-            if key == "意向客户":
-                default_json_result[key] = "不确定"
+            # Handle both Field objects and dicts
+            key = getattr(field, 'key', None) or (field.get('key') if isinstance(field, dict) else None)
+            if not key:
+                continue
+            if key == "意向客户" or key == "intent_customer":
+                default_json_result[key] = ""
             elif key == "分析理由":
                 default_json_result[key] = "分析失败， 格式错误"
             else:
-                default_json_result[key] = "无"
+                default_json_result[key] = ""
         return default_json_result
 
 

@@ -242,7 +242,8 @@ def get_comments():
                     '用户签名': comment.user_signature,
                     '评论时间': datetime.fromtimestamp(comment.create_time).strftime('%Y-%m-%d'),
                     '评论内容': comment.content,
-                    "comment_id": comment.comment_id
+                    "comment_id": comment.comment_id,
+                    "intent_customer": comment.intent_customer
                 }
             elif task.platform == "xhs":
                 # 小红书的时间戳是毫秒级，需要除以1000转换为秒级时间戳
@@ -255,12 +256,34 @@ def get_comments():
                     '用户签名': "",
                     '评论时间': datetime.fromtimestamp(create_time_seconds).strftime('%Y-%m-%d'),
                     '评论内容': comment.content,
-                    "comment_id": comment.comment_id
+                    "comment_id": comment.comment_id,
+                    "intent_customer": comment.intent_customer
                 }
             # 合并 extra_data 字段
             extra_data = comment.extra_data
             if extra_data:
-                comment_data.update(extra_data)
+                if isinstance(extra_data, dict):
+                    comment_data.update(extra_data)
+                elif isinstance(extra_data, str):
+                    try:
+                        import json
+                        comment_data.update(json.loads(extra_data))
+                    except:
+                        pass
+            
+            # 确保 intent_customer 统一字段名
+            # 优先级：数据库列 > extra_data 中的 intent_customer > extra_data 中的 意向客户
+            db_val = comment.intent_customer
+            extra_val = None
+            if isinstance(extra_data, dict):
+                extra_val = extra_data.get("intent_customer") or extra_data.get("意向客户")
+            
+            final_val = db_val or extra_val or comment_data.get("intent_customer") or comment_data.get("意向客户")
+            if final_val:
+                comment_data["intent_customer"] = final_val
+                # 同时保留中文名，防止前端某些地方还在用中文名
+                comment_data["意向客户"] = final_val
+
             comment_list.append(comment_data)
 
         return jsonify({

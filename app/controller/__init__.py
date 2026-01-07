@@ -6,6 +6,10 @@ def register_blueprints(app):
     app.register_blueprint(message_bp, url_prefix='')
     from app.controller.comment_analysis import analysis_bp
     app.register_blueprint(analysis_bp, url_prefix='')
+    from app.controller.quota import quota_bp
+    app.register_blueprint(quota_bp, url_prefix='')
+    from app.controller.user import user_bp
+    app.register_blueprint(user_bp, url_prefix='')
 
 
 def register_blueprints_test(app):
@@ -15,3 +19,7 @@ def register_blueprints_test(app):
     app.register_blueprint(message_bp, url_prefix='/dev')
     from app.controller.comment_analysis import analysis_bp
     app.register_blueprint(analysis_bp, url_prefix='/dev')
+    from app.controller.quota import quota_bp
+    app.register_blueprint(quota_bp, url_prefix='/dev')
+    from app.controller.user import user_bp
+    app.register_blueprint(user_bp, url_prefix='/dev')
