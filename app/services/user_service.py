@@ -3,6 +3,16 @@ from app.model import User
 from tools.time_util import get_current_timestamp
 from sqlalchemy.exc import SQLAlchemyError
 
+# ==========================================
+# 时间戳标准说明
+# ==========================================
+# 所有时间戳字段统一使用 13 位毫秒级格式 (例如: 1767260800000)
+# - create_time: 创建时间，使用 get_current_timestamp() 获取
+# - update_time: 更新时间，使用 get_current_timestamp() 获取
+# - expire_time: 账号过期时间，需要确保也是13位毫秒级格式
+# 前端 formatTimestamp() 函数使用 new Date(timestamp) 需要毫秒级时间戳
+# ==========================================
+
 
 class UserService:
     def __init__(self):
@@ -34,6 +44,11 @@ class UserService:
     def create_user(self, user_id, username=None, email=None, password=None, expire_time=None):
         try:
             # store password as-is (plain text)
+            # 注意：所有时间戳统一使用13位毫秒级格式 (e.g., 1767260800000)
+            # 如果 expire_time 是10位秒级格式，需要转换为毫秒级
+            if expire_time and expire_time < 1000000000000:  # 如果是10位时间戳
+                expire_time = expire_time * 1000  # 转换为毫秒级
+            
             user = User(user_id=user_id, username=username, email=email, password=password,
                         expire_time=expire_time, create_time=get_current_timestamp())
             self.db.session.add(user)
@@ -53,6 +68,10 @@ class UserService:
             # store password as-is (plain text)
             for k, v in kwargs.items():
                 if hasattr(user, k):
+                    # 如果更新 expire_time，确保使用13位毫秒级格式
+                    if k == 'expire_time' and v:
+                        if v < 1000000000000:  # 如果是10位时间戳
+                            v = v * 1000  # 转换为毫秒级
                     setattr(user, k, v)
             user.update_time = get_current_timestamp()
             self.db.session.commit()

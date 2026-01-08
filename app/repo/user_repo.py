@@ -14,6 +14,7 @@ class User(Base):
     username = Column(String(64), unique=True)
     password = Column(String(255))
     email = Column(String(128), unique=False)
+    expire_time = Column(BigInteger)
     create_time = Column(BigInteger)
     update_time = Column(BigInteger)
 

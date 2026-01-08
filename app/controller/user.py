@@ -1,7 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 import os
 from app.services.user_service import UserService
 from app.repo.quota_repo import QuotaRepo
+from app.core.jwt import token_required
+from tools.time_util import get_current_timestamp
 
 user_bp = Blueprint('user_bp', __name__)
 
@@ -16,6 +18,28 @@ def _check_admin():
     if not admin_pwd or admin_pwd != env_pwd:
         return False
     return True
+
+
+@user_bp.route('/user_info', methods=['GET'])
+@token_required
+def get_user_info():
+    """获取当前用户信息"""
+    try:
+        user = g.current_user
+        subscription_end_date = user.expire_time if user.expire_time else get_current_timestamp()
+        
+        return jsonify({
+            'status': 200,
+            'msg': 'success',
+            'data': {
+                'package_type': 0,  # 默认返回0（试用会员）
+                'subscription_end_date': subscription_end_date
+            }
+        }), 200
+    except Exception as e:
+        import traceback
+        print(f"Error in get_user_info: {traceback.format_exc()}")
+        return jsonify({'status': 500, 'msg': f'error: {e}'}), 500
 
 
 @user_bp.route('/user/<user_id>', methods=['GET'])
