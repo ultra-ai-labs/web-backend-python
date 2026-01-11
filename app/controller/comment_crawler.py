@@ -21,6 +21,7 @@ from app.repo.task_step_repo import TaskStepRepo
 from app.repo.user_repo import UserRepo
 from app.repo.xhs_note_comment_repo import XhsNoteCommentRepo
 from app.services.comment_crawler_service import CommentCrawlerService
+from app.utils import check_user_quota
 
 crawler_bp = Blueprint('crawler_bp', __name__)
 
@@ -110,6 +111,12 @@ def run_comment_crawler():
         lt = data.get("lt", "qrcode")
         crawler_type = data.get("crawler_type", "detail")
         start_page = data.get("start_page", config.START_PAGE)
+
+        # 检查额度
+        is_allowed, msg = check_user_quota(user_id)
+        if not is_allowed:
+            return jsonify({"status": 403, "msg": msg}), 200
+
         task_id = task_service.create_task(platform, keyword, user_id)
         task_step_service.create_task_step(task_id, TaskStepType.CRAWLER, TaskStepStatus.RUNNING)
 

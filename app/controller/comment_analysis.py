@@ -20,6 +20,7 @@ from app.repo.task_repo import TaskRepo
 from app.repo.task_step_repo import TaskStepRepo
 from app.repo.xhs_note_comment_repo import XhsNoteCommentRepo
 from app.services.comment_analysis_service import CommentAnalysisService
+from app.utils import check_user_quota
 
 analysis_bp = Blueprint('analysis', __name__)
 
@@ -74,6 +75,12 @@ def run_analysis():
     task, response, status = get_task_and_validate(task_id, user_id)
     if response:
         return response, status
+
+    # 检查额度
+    is_allowed, msg = check_user_quota(user_id)
+    if not is_allowed:
+        return jsonify({"status": 403, "msg": msg}), 200
+
     create_or_get_task_step(task_id)
 
     @copy_current_request_context
@@ -164,6 +171,13 @@ def test_analysis():
         platform = data.get("platform", "dy")
         comment_id = data.get("comment_id")
         task_id = data.get("task_id", "469399704401215488")
+        
+        # 检查额度
+        user_id = get_user_id()
+        is_allowed, msg = check_user_quota(user_id)
+        if not is_allowed:
+            return jsonify({"status": 403, "msg": msg}), 200
+
         comment = get_comment_by_comment_id(comment_id, platform, task_id)
 
         if not comment:
