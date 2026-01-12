@@ -10,8 +10,9 @@ class AnalysisModuleRepo:
     def __init__(self):
         self.db = db
 
-    def create_analysis_module(self, user_id, service_introduction=None, customer_description=None):
+    def create_analysis_module(self, task_id, user_id, service_introduction=None, customer_description=None):
         new_module = AnalysisModule(
+            task_id=task_id,
             user_id=user_id,
             service_introduction=service_introduction,
             customer_description=customer_description
@@ -25,8 +26,8 @@ class AnalysisModuleRepo:
             print(f"Error creating analysis module: {e}")
             return None
 
-    def update_analysis_module(self, module_id, user_id, service_introduction=None, customer_description=None, default=None):
-        module = AnalysisModule.query.filter_by(id=module_id, user_id=user_id).first()
+    def update_analysis_module(self, module_id, task_id, user_id, service_introduction=None, customer_description=None, default=None):
+        module = AnalysisModule.query.filter_by(id=module_id, task_id=task_id, user_id=user_id).first()
         if not module:
             print(f"Analysis module with id {module_id} not found")
             return None
@@ -47,10 +48,11 @@ class AnalysisModuleRepo:
             print(f"Error updating analysis module: {e}")
             return None
 
-    def delete_analysis_module(self, module_id, user_id):
+    def delete_analysis_module(self, module_id, task_id, user_id):
         module = AnalysisModule.query.filter(
             and_(
                 AnalysisModule.id == module_id,
+                AnalysisModule.task_id == task_id,
                 AnalysisModule.user_id == user_id,
                 AnalysisModule.delete_time == None
             )).first()
@@ -68,12 +70,12 @@ class AnalysisModuleRepo:
             return False
 
     @staticmethod
-    def get_analysis_modules_by_user_id(user_id):
+    def get_analysis_modules_by_task_and_user(task_id, user_id):
         try:
-            modules = AnalysisModule.query.filter_by(user_id=user_id, delete_time=None).all()
+            modules = AnalysisModule.query.filter_by(task_id=task_id, user_id=user_id, delete_time=None).all()
             return modules
         except SQLAlchemyError as e:
-            print(f"Error retrieving analysis modules for user_id {user_id}: {e}")
+            print(f"Error retrieving analysis modules for task_id {task_id} and user_id {user_id}: {e}")
             return None
 
 

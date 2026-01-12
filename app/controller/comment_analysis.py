@@ -319,13 +319,17 @@ def get_comments():
 def create_analysis_module():
     try:
         data = request.json
+        task_id = data.get("task_id")
         service_introduction = data.get("service_introduction", "")
         customer_description = data.get("customer_description", "")
+
+        if not task_id:
+            return jsonify({"status": 400, "msg": "task_id is required"}), 400
 
         user_id = get_user_id()
 
         new_analysis_module = analysis_module_repo.create_analysis_module(
-            user_id, service_introduction, customer_description
+            task_id, user_id, service_introduction, customer_description
         )
         if new_analysis_module:
             return jsonify({"status": 200, "msg": "Analysis module created successfully", "data": new_analysis_module.to_dict()}), 200
@@ -340,14 +344,18 @@ def create_analysis_module():
 def update_analysis_module():
     try:
         data = request.json
+        module_id = data.get("id")
+        task_id = data.get("task_id")
         service_introduction = data.get("service_introduction")
         customer_description = data.get("customer_description")
-        module_id = data.get("id")
         default = data.get("default")
+
+        if not task_id:
+            return jsonify({"status": 400, "msg": "task_id is required"}), 400
 
         user_id = get_user_id()
 
-        updated_module = analysis_module_repo.update_analysis_module(module_id, user_id, service_introduction, customer_description, default)
+        updated_module = analysis_module_repo.update_analysis_module(module_id, task_id, user_id, service_introduction, customer_description, default)
 
         if updated_module is not None:
             return jsonify({"status": 200, "msg": "success", "data": updated_module.to_dict()}), 200
@@ -363,8 +371,13 @@ def delete_analysis_module():
     try:
         data = request.json
         module_id = data.get("id")
+        task_id = data.get("task_id")
+
+        if not task_id:
+            return jsonify({"status": 400, "msg": "task_id is required"}), 400
+
         user_id = get_user_id()
-        success = analysis_module_repo.delete_analysis_module(module_id, user_id)
+        success = analysis_module_repo.delete_analysis_module(module_id, task_id, user_id)
         if success:
             return jsonify({"status": 200, "msg": "success"}), 200
         return jsonify({"status": 500, "msg": "Failed to delete analysis module"}), 500
@@ -376,8 +389,12 @@ def delete_analysis_module():
 @token_required
 def get_analysis_modules():
     try:
+        task_id = request.args.get("task_id")
+        if not task_id:
+            return jsonify({"status": 400, "msg": "task_id is required"}), 400
+
         user_id = get_user_id()
-        modules = analysis_module_repo.get_analysis_modules_by_user_id(user_id)
+        modules = analysis_module_repo.get_analysis_modules_by_task_and_user(task_id, user_id)
         modules_dict = [module.to_dict() for module in modules]
         return jsonify({"status": 200, "msg": "success", "data": modules_dict}), 200
     except Exception as e:

@@ -6,6 +6,7 @@ class AnalysisModule(db.Model):
     __tablename__ = 'analysis_module'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True, comment='自增ID')
+    task_id = db.Column(db.String(64), nullable=False, comment='关联的任务ID')
     user_id = db.Column(db.String(64), nullable=False, comment='使用的用户ID')
     service_introduction = db.Column(db.Text, nullable=True, comment='分析描述模板的服务介绍')
     customer_description = db.Column(db.Text, nullable=True, comment='分析描述模板的客户描述')
@@ -18,6 +19,7 @@ class AnalysisModule(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "task_id": self.task_id,
             "service_introduction": self.service_introduction,
             "customer_description": self.customer_description,
             "default": self.default,

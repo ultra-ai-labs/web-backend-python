@@ -610,6 +610,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 DROP TABLE IF EXISTS `analysis_module`;
 CREATE TABLE `analysis_module` (
   `id` int NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `task_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '关联的任务ID',
   `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '使用的用户ID',
   `service_introduction` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '分析描述模板的服务介绍',
   `customer_description` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '分析描述模板的客户描述',
@@ -618,7 +619,8 @@ CREATE TABLE `analysis_module` (
   `update_time` bigint NULL DEFAULT NULL COMMENT '更新时间戳',
   `delete_time` bigint NULL DEFAULT NULL COMMENT '删除时间戳',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_analysis_module_user_id`(`user_id` ASC) USING BTREE
+  INDEX `idx_analysis_module_user_id`(`user_id` ASC) USING BTREE,
+  INDEX `idx_analysis_module_task_user`(`task_id` ASC, `user_id` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '分析模块' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
