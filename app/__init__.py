@@ -12,8 +12,16 @@ def create_app():
     n_app.config['SQLALCHEMY_DATABASE_URI'] = PYMYSQL_PROD_DB_URL
     n_app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # 配置跨域
-    CORS(n_app)
+    # 配置跨域：显式允许开发常用来源并支持凭证和授权头
+    CORS(n_app,
+         resources={r"/*": {"origins": [
+             "http://localhost:3000",
+             "http://localhost:3001",
+             "http://127.0.0.1:3001"
+         ]}},
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization", "x-admin-password"],
+         expose_headers=["Authorization"])
 
     # reduce noisy third-party library logging
     import logging
@@ -41,8 +49,17 @@ def create_app_with_test():
     n_app.config['SQLALCHEMY_DATABASE_URI'] = PYMYSQL_PROD_DB_URL
     n_app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # 配置跨域
-    CORS(n_app)
+    # 配置跨域：显式允许开发常用来源并支持凭证和授权头
+    CORS(n_app,
+         resources={r"/*": {"origins": [
+             "http://localhost:3000",
+             "http://localhost:3001",
+             "http://127.0.0.1:3001",
+             "http://43.161.219.41:3001"
+         ]}},
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization", "x-admin-password"],
+         expose_headers=["Authorization"])
 
     # 初始化拓展
     # with n_app.app_context():
