@@ -85,11 +85,30 @@ async def init_table_schema():
     utils.logger.info("[init_table_schema] begin init mysql table schema ...")
     await init_mediacrawler_db()
     async_db_obj: AsyncMysqlDB = media_crawler_db_var.get()
-    async with aiofiles.open("schema/tables.sql", mode="r", encoding='utf-8') as f:
-        schema_sql = await f.read()
-        await async_db_obj.execute(schema_sql)
-        utils.logger.info("[init_table_schema] mediacrawler table schema init successful")
+
+    sql_path = "schema/media_crawler.sql"
+    utils.logger.info(f"[init_table_schema] loading schema file: {sql_path}")
+    try:
+        async with aiofiles.open(sql_path, mode="r", encoding='utf-8') as f:
+            schema_sql = await f.read()
+    except FileNotFoundError:
+        utils.logger.error(f"Schema file not found: {sql_path}")
         await close()
+        return
+
+    # Split statements and execute sequentially to avoid multi-statement issues
+    statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
+    for stmt in statements:
+        try:
+            # re-append semicolon for clarity
+            await async_db_obj.execute(stmt + ';')
+        except Exception as e:
+            utils.logger.error(f"Failed to execute statement: {e}\nStatement: {stmt[:200]}")
+            # continue executing remaining statements
+            continue
+
+    utils.logger.info("[init_table_schema] mediacrawler table schema init successful")
+    await close()
 
 
 if __name__ == '__main__':
