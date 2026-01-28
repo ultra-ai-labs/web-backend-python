@@ -68,6 +68,10 @@ analysis_name = f"analyzed_comments_{current_time}"
 # 配置跨域，允许自定义头 x-admin-password 用于管理员操作
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "x-admin-password"])
+@app.route('/health', methods=['GET'])
+def health():
+    # simple health check
+    return jsonify({"status": "ok", "time": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}), 200
 # ------------------------Data Analysis Initialize----------------
 # 获取桌面路径
 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
