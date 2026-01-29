@@ -1,5 +1,6 @@
 import os
 import time
+import urllib.parse
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, exc
 from sqlalchemy.orm import sessionmaker
@@ -29,19 +30,33 @@ else:
     print(DB_USER, DB_PWD, DB_URI, DB_PORT, DB_NAME)
 
 
-# mysql config
-DEV_USER_DB_PWD = os.getenv("DEV_USER_DB_PWD", "")  # your relation db password
-DEV_USER_DB_USER = os.getenv("DEV_USER_DB_USER", "root")
-DEV_USER_DB_URI = os.getenv("DEV_USER_DB_URI", "127.0.0.1")
-DEV_USER_DB_PORT = os.getenv("DEV_USER_DB_PORT", "3306")
-DEV_USER_DB_NAME = os.getenv("DEV_USER_DB_NAME", "media_crawler")
+# Direct use of RELATION_DB_URL from environment variable if available, as requested.
+# WARNING: This assumes the URL in .env is already correctly formatted and URL-encoded if necessary.
+RELATION_DB_URL_ENV = os.getenv("RELATION_DB_URL")
 
-RELATION_DB_URL = f"mysql://{DB_USER}:{DB_PWD}@{DB_URI}:{DB_PORT}/{DB_NAME}"
-PYMYSQL_PROD_DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PWD}@{DB_URI}:{DB_PORT}/{DB_NAME}"
+if RELATION_DB_URL_ENV:
+    # If the user explicitly provides RELATION_DB_URL in .env, use it directly.
+    # Note: SQLAlchemy requires 'mysql+pymysql://' driver for pymysql.
+    # If the env var is 'mysql://', we might need to adjust it to 'mysql+pymysql://'
+    # or rely on sqlalchemy's default driver detection (which might not be pymysql).
+    # To be safe and compatible with previous logic, we ensure it uses pymysql driver.
+    if RELATION_DB_URL_ENV.startswith("mysql://"):
+         SQLALCHEMY_DATABASE_URI = RELATION_DB_URL_ENV.replace("mysql://", "mysql+pymysql://", 1)
+    else:
+         SQLALCHEMY_DATABASE_URI = RELATION_DB_URL_ENV
+else:
+    # Fallback to constructing from components if RELATION_DB_URL is not set
+    # URL encode password to handle special characters like '@'
+    DB_PWD_ENCODED = urllib.parse.quote_plus(DB_PWD)
+    SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PWD_ENCODED}@{DB_URI}:{DB_PORT}/{DB_NAME}"
 
-DEV_USER_DB_URL = f"mysql+pymysql://{DEV_USER_DB_USER}:{DEV_USER_DB_PWD}@{DEV_USER_DB_URI}:{DEV_USER_DB_PORT}/{DEV_USER_DB_NAME}"
+# Keep these for compatibility
+RELATION_DB_URL = SQLALCHEMY_DATABASE_URI
+PYMYSQL_PROD_DB_URL = SQLALCHEMY_DATABASE_URI
+DEV_USER_DB_URL = SQLALCHEMY_DATABASE_URI
+
 user_engine = create_engine(
-    DEV_USER_DB_URL,
+    SQLALCHEMY_DATABASE_URI,
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
