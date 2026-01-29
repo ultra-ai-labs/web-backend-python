@@ -12,10 +12,13 @@ def create_app():
     n_app.config['SQLALCHEMY_DATABASE_URI'] = PYMYSQL_PROD_DB_URL
     n_app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+
+
     # 配置跨域：显式允许开发常用来源并支持凭证和授权头
     CORS(n_app,
           resources={r"/*": {"origins": [
              "http://localhost:3000",
+             "http:localhost:3000",
              "http://localhost:3001",
              "http://127.0.0.1:3001",
          ]}},
