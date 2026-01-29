@@ -1,6 +1,7 @@
 import os
 import time
 import urllib.parse
+from urllib.parse import urlparse, quote_plus
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, exc
 from sqlalchemy.orm import sessionmaker
@@ -30,23 +31,58 @@ else:
     print(DB_USER, DB_PWD, DB_URI, DB_PORT, DB_NAME)
 
 
+def parse_and_reconstruct_url(mysql_url):
+    """
+    Parse the MySQL URL manually to handle special characters in passwords (like '@')
+    and reconstruct it with proper encoding for SQLAlchemy.
+    """
+    if not mysql_url:
+        return None
+        
+    try:
+        # If there are multiple '@', it means the password contains '@'
+        # Format: mysql://user:password@host:port/dbname
+        if mysql_url.count("@") > 1:
+            # Find the last '@' which separates credentials from host
+            last_at_index = mysql_url.rfind("@")
+            
+            # Everything before the last '@' contains user:password
+            credentials_part = mysql_url[:last_at_index]
+            host_part = mysql_url[last_at_index+1:]
+            
+            # Find the scheme (e.g., mysql://)
+            scheme_end = credentials_part.find("://")
+            if scheme_end != -1:
+                scheme = credentials_part[:scheme_end+3]
+                user_pass = credentials_part[scheme_end+3:]
+                
+                # Split user and password
+                if ":" in user_pass:
+                    user, password = user_pass.split(":", 1)
+                    # Encode the password
+                    password_encoded = quote_plus(password)
+                    # Reconstruct the URL
+                    return f"{scheme}{user}:{password_encoded}@{host_part}"
+        
+        return mysql_url
+    except Exception as e:
+        print(f"Error parsing RELATION_DB_URL: {e}")
+        return mysql_url
+
 # Direct use of RELATION_DB_URL from environment variable if available, as requested.
-# WARNING: This assumes the URL in .env is already correctly formatted and URL-encoded if necessary.
 RELATION_DB_URL_ENV = os.getenv("RELATION_DB_URL")
 
 if RELATION_DB_URL_ENV:
-    # If the user explicitly provides RELATION_DB_URL in .env, use it directly.
-    # Note: SQLAlchemy requires 'mysql+pymysql://' driver for pymysql.
-    # If the env var is 'mysql://', we might need to adjust it to 'mysql+pymysql://'
-    # or rely on sqlalchemy's default driver detection (which might not be pymysql).
-    # To be safe and compatible with previous logic, we ensure it uses pymysql driver.
-    if RELATION_DB_URL_ENV.startswith("mysql://"):
-         SQLALCHEMY_DATABASE_URI = RELATION_DB_URL_ENV.replace("mysql://", "mysql+pymysql://", 1)
+    # 1. Fix special characters encoding
+    fixed_url = parse_and_reconstruct_url(RELATION_DB_URL_ENV)
+    
+    # 2. Fix driver for SQLAlchemy (needs mysql+pymysql://)
+    if fixed_url.startswith("mysql://"):
+         SQLALCHEMY_DATABASE_URI = fixed_url.replace("mysql://", "mysql+pymysql://", 1)
     else:
-         SQLALCHEMY_DATABASE_URI = RELATION_DB_URL_ENV
+         SQLALCHEMY_DATABASE_URI = fixed_url
 else:
-    # Fallback to constructing from components if RELATION_DB_URL is not set
-    # URL encode password to handle special characters like '@'
+    # Fallback to constructing from components
     DB_PWD_ENCODED = urllib.parse.quote_plus(DB_PWD)
     SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PWD_ENCODED}@{DB_URI}:{DB_PORT}/{DB_NAME}"
 
