@@ -1,55 +1,88 @@
 import os
 import time
+import urllib.parse
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, exc
 from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
-# 获取当前环境
-ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
+# Redis config
+REDIS_DB_HOST = os.getenv("REDIS_DB_HOST")
+REDIS_DB_PWD = os.getenv("REDIS_DB_PWD")
 
-# redis config
-REDIS_DB_HOST = "127.0.0.1"  # your redis host
-REDIS_DB_PWD = os.getenv("REDIS_DB_PWD", "123456")  # your redis password
+# Database Config
+# Priority: RELATION_DB_URL from env > Constructed from env components
+# We do NOT provide default values like 'localhost' or 'root'.
+# Users must define these in their environment variables (e.g. .env file).
 
-# 数据库配置
-if ENVIRONMENT == "production":
-    DB_USER = os.getenv("PROD_DB_USER", "root")
-    DB_PWD = os.getenv("PROD_DB_PWD", "")
-    DB_URI = os.getenv("PROD_DB_URI", "127.0.0.1")
-    DB_PORT = os.getenv("PROD_DB_PORT", "3306")
-    DB_NAME = os.getenv("PROD_DB_NAME", "media_crawler")
+RELATION_DB_URL_ENV = os.getenv("RELATION_DB_URL")
+
+# Components from env
+DB_USER = os.getenv("DB_USER")
+DB_PWD = os.getenv("DB_PWD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+
+RELATION_DB_URL = None
+
+if RELATION_DB_URL_ENV:
+    # Use the provided URL
+    RELATION_DB_URL = RELATION_DB_URL_ENV
+    
+    # Handle potentially unescaped '@' in password within the URL
+    if "@" in RELATION_DB_URL_ENV:
+        try:
+             # Basic attempt to parse manually if standard parsing fails due to multiple '@'
+             last_at_index = RELATION_DB_URL_ENV.rfind("@")
+             
+             credentials_part = RELATION_DB_URL_ENV[:last_at_index]
+             host_part = RELATION_DB_URL_ENV[last_at_index+1:]
+             
+             scheme_end = credentials_part.find("://")
+             if scheme_end != -1:
+                 scheme = credentials_part[:scheme_end+3]
+                 user_pass = credentials_part[scheme_end+3:]
+                 
+                 if ":" in user_pass:
+                     user, password = user_pass.split(":", 1)
+                     if password == urllib.parse.unquote_plus(password):
+                         password_encoded = urllib.parse.quote_plus(password)
+                         RELATION_DB_URL = f"{scheme}{user}:{password_encoded}@{host_part}"
+        except Exception as e:
+            print(f"Error parsing/fixing RELATION_DB_URL: {e}")
+            RELATION_DB_URL = RELATION_DB_URL_ENV
+
+elif all([DB_USER, DB_PWD, DB_HOST, DB_PORT, DB_NAME]):
+    # Construct from components if all are present
+    encoded_pwd = urllib.parse.quote_plus(DB_PWD)
+    RELATION_DB_URL = f"mysql://{DB_USER}:{encoded_pwd}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
 else:
-    DB_USER = os.getenv("DEV_DB_USER", "root")
-    DB_PWD = os.getenv("DEV_DB_PWD", "")
-    DB_URI = os.getenv("DEV_DB_URI", "127.0.0.1")
-    DB_PORT = os.getenv("DEV_DB_PORT", "3306")
-    DB_NAME = os.getenv("DEV_DB_NAME", "media_crawler")
-    print(DB_USER, DB_PWD, DB_URI, DB_PORT, DB_NAME)
+    # No valid configuration found
+    raise ValueError(
+        "Database configuration is missing! "
+        "You must set either 'RELATION_DB_URL' OR all of ('DB_USER', 'DB_PWD', 'DB_HOST', 'DB_PORT', 'DB_NAME') "
+        "in your environment variables (e.g. .env file)."
+    )
 
+# SQLAlchemy URL (needs pymysql driver specified usually)
+if RELATION_DB_URL.startswith("mysql://") and "pymysql" not in RELATION_DB_URL:
+     PYMYSQL_PROD_DB_URL = RELATION_DB_URL.replace("mysql://", "mysql+pymysql://", 1)
+else:
+     PYMYSQL_PROD_DB_URL = RELATION_DB_URL
 
-# mysql config
-DEV_USER_DB_PWD = os.getenv("DEV_USER_DB_PWD", "")  # your relation db password
-DEV_USER_DB_USER = os.getenv("DEV_USER_DB_USER", "root")
-DEV_USER_DB_URI = os.getenv("DEV_USER_DB_URI", "127.0.0.1")
-DEV_USER_DB_PORT = os.getenv("DEV_USER_DB_PORT", "3306")
-DEV_USER_DB_NAME = os.getenv("DEV_USER_DB_NAME", "media_crawler")
-
-RELATION_DB_URL = f"mysql://{DB_USER}:{DB_PWD}@{DB_URI}:{DB_PORT}/{DB_NAME}"
-PYMYSQL_PROD_DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PWD}@{DB_URI}:{DB_PORT}/{DB_NAME}"
-
-DEV_USER_DB_URL = f"mysql+pymysql://{DEV_USER_DB_USER}:{DEV_USER_DB_PWD}@{DEV_USER_DB_URI}:{DEV_USER_DB_PORT}/{DEV_USER_DB_NAME}"
+# Create engine (used by synchronous code)
 user_engine = create_engine(
-    DEV_USER_DB_URL,
+    PYMYSQL_PROD_DB_URL,
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
-    pool_recycle=360000,  # Recycle connections after 30 minutes
+    pool_recycle=360000,
     pool_pre_ping=True
-    )
+)
 UserSession = sessionmaker(bind=user_engine)
-
 
 def get_session():
     session = None
@@ -60,12 +93,9 @@ def get_session():
             break
         except exc.OperationalError as e:
             print(f"Connection failed, retrying... {retries} retries left")
-            time.sleep(5)  # Wait before retrying
+            time.sleep(5)
             retries -= 1
 
     if session is None:
         raise Exception("Could not establish a database connection after multiple retries")
     return session
-
-# sqlite3 config
-# RELATION_DB_URL = f"sqlite://data/media_crawler.sqlite"

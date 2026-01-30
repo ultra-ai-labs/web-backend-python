@@ -1,4 +1,6 @@
 # 基础配置
+import os
+
 PLATFORM = "xhs"
 KEYWORDS = "橙子网络"
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
@@ -48,17 +50,17 @@ ENABLE_GET_COMMENTS = True
 ENABLE_GET_SUB_COMMENTS = True
 
 # 七牛云存储配置
-AccessKey = "QC7jpcVf0z25_HfdSVHJnZiUNcWdwvZoK1u6oxgn"
-SecretKey = "pb_BRTF72Y-8I3LYvpOMqxHQTFLUkEjMENOXWwsj"
-BucketName = "test-storage666666"
-CDNTestDomain = "storage.zhihua.chat"
+AccessKey = os.getenv("QINIU_ACCESS_KEY", "")
+SecretKey = os.getenv("QINIU_SECRET_KEY", "")
+BucketName = os.getenv("QINIU_BUCKET_NAME", "")
+CDNTestDomain = os.getenv("QINIU_CDN_DOMAIN", "")
 
 # 腾讯云存储配置
-TencentSecretId = "AKIDbz7zaw2sSlob9RSCgutc4F9nBI8i26tR"
-TencentSecretKey = "JM8eutfGfrnTs1tUqwmLfjX5PWQEnIYa"
-TencentBucketName = "pycrawler-1347723456"
+TencentSecretId = os.getenv("TENCENT_SECRET_ID", "")
+TencentSecretKey = os.getenv("TENCENT_SECRET_KEY", "")
+TencentBucketName = os.getenv("TENCENT_BUCKET_NAME", "")
 # TencentCdnDomain = "zcloud-1256349444.cos.ap-guangzhou.myqcloud.com"
-TencentRegion = "ap-guangzhou"
+TencentRegion = os.getenv("TENCENT_REGION", "")
 # TencentSecretId = "AKIDYa3eCd25FWlIgAVcZN5cw68EHKOI7264"
 # TencentSecretKey = "teFh1CEFkDj9QYVNQSafDpXcfCc8nW8u"
 # TencentBucketName = "zcloud-1256349444"
@@ -66,13 +68,13 @@ TencentRegion = "ap-guangzhou"
 # TencentRegion = "ap-guangzhou"
 
 # OPENAI配置
-OPENAI_API_KEY="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"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # DEEPSEEK 配置
-DEEPSEEK_API_KEY="sk-5cd462ff63e74e2b9ac6be7bf23133c5"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 # ANALYSIS_THREAD 分析线程数
-ANALYSIS_THREAD_NUM = 6
+ANALYSIS_THREAD_NUM = int(os.getenv("ANALYSIS_THREAD_NUM", 6))
 
 
 # 指定小红书需要爬虫的笔记ID列表

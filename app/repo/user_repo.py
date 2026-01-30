@@ -21,33 +21,49 @@ class User(Base):
 
 class UserRepo:
     def __init__(self):
-        self.session = get_session()
-
-    def refresh_session(self):
-        """Refresh session to see committed changes from other sessions"""
-        try:
-            self.session.rollback()
-            self.session.expire_all()
-            print("[UserRepo.refresh_session] cache refreshed")
-        except Exception as e:
-            print(f"[UserRepo.refresh_session] error: {e}")
+        # Do NOT create a session here to avoid threading issues
+        pass
 
     def get_user_by_username(self, username):
+        session = get_session()
         try:
-            # Only expire_all - refresh_session is called after create/update
-            self.session.expire_all()
-            user = self.session.query(User).filter_by(username=username).first()
+            user = session.query(User).filter_by(username=username).first()
+            # Detach object from session so it can be used after session closes
+            if user:
+                session.expunge(user)
             return user
         except exc.OperationalError as e:
             print("OperationalError: ", e)
-            self.session = get_session()
-            return self.session.query(User).filter_by(username=username).first()
+            # Retry once
+            session.close()
+            session = get_session()
+            user = session.query(User).filter_by(username=username).first()
+            if user:
+                session.expunge(user)
+            return user
+        except Exception as e:
+            print(f"Error getting user by username {username}: {e}")
+            return None
+        finally:
+            session.close()
 
     def get_user_by_user_id(self, user_id):
+        session = get_session()
         try:
-            self.session.expire_all()
-            return self.session.query(User).filter_by(user_id=user_id).first()
+            user = session.query(User).filter_by(user_id=user_id).first()
+            if user:
+                session.expunge(user)
+            return user
         except exc.SQLAlchemyError as e:
             print("DBError: ", e)
-            self.session = get_session()
-            return self.session.query(User).filter_by(user_id=user_id).first()
+            session.close()
+            session = get_session()
+            user = session.query(User).filter_by(user_id=user_id).first()
+            if user:
+                session.expunge(user)
+            return user
+        except Exception as e:
+            print(f"Error getting user by user_id {user_id}: {e}")
+            return None
+        finally:
+            session.close()
