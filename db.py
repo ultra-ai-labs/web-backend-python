@@ -47,16 +47,23 @@ async def init_mediacrawler_db():
         utils.logger.info("[init_mediacrawler_db] db pool already initialized, skipping")
         return
     
-    db_conn_params = parse_mysql_url(config.RELATION_DB_URL)
-    pool = await aiomysql.create_pool(
-        autocommit=True,
-        **db_conn_params
-    )
-    async_db_obj = AsyncMysqlDB(pool)
+    try:
+        db_conn_params = parse_mysql_url(config.RELATION_DB_URL)
+        utils.logger.info(f"[init_mediacrawler_db] Connecting to MySQL at {db_conn_params.get('host')}:{db_conn_params.get('port')} as user {db_conn_params.get('user')}")
+        
+        pool = await aiomysql.create_pool(
+            autocommit=True,
+            **db_conn_params
+        )
+        async_db_obj = AsyncMysqlDB(pool)
 
-    # 将连接池对象和封装的CRUD sql接口对象放到上下文变量中
-    db_conn_pool_var.set(pool)
-    media_crawler_db_var.set(async_db_obj)
+        # 将连接池对象和封装的CRUD sql接口对象放到上下文变量中
+        db_conn_pool_var.set(pool)
+        media_crawler_db_var.set(async_db_obj)
+        utils.logger.info("[init_mediacrawler_db] Database connection pool created successfully")
+    except Exception as e:
+        utils.logger.error(f"[init_mediacrawler_db] Failed to create database connection pool: {e}")
+        raise
 
 
 async def init_db():
