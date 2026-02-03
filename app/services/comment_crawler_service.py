@@ -107,9 +107,10 @@ class CommentCrawlerService:
         progress_thread.start()
 
         try:
+            utils.logger.info(f"[run_crawler] Starting crawler for task {task_id}, platform: {platform}")
             await crawler.nstart(id_list=id_list)
         except Exception as e:
-            print(e)
+            utils.logger.error(f"[run_crawler] Crawler failed for task {task_id}: {e}", exc_info=True)
             # Signal the progress thread to stop
             stop_event.set()
             progress_thread.join()
@@ -117,6 +118,7 @@ class CommentCrawlerService:
 
             if config.SAVE_DATA_OPTION == "db":
                 await db.close()
+            return
         stop_event.set()
         progress_thread.join()
         task_step_service.update_task_step_status(task_id, TaskStepType.CRAWLER, TaskStepStatus.FINISH)
