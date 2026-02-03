@@ -2,12 +2,13 @@
 # @Author  : relakkes@gmail.com
 # @Time    : 2024/1/14 18:46
 # @Desc    :
-from typing import List
+from typing import List, Dict
 
 import config
 
 from .douyin_store_impl import *
 # from .douyin_store_sql import *
+from var import media_crawler_db_var
 
 class DouyinStoreFactory:
     STORES = {
@@ -60,6 +61,19 @@ async def batch_update_dy_aweme_comments(aweme_id: str, comments: List[Dict], ta
         return
     for comment_item in comments:
         await update_dy_aweme_comment(aweme_id, comment_item, task_id, user_id)
+
+    # Update quota
+    try:
+        async_db = media_crawler_db_var.get()
+        if async_db and user_id:
+            # Use get_current_timestamp() instead of get_current_time() as quota table uses BigInteger for update_time
+            update_sql = "UPDATE quota SET used_quota = used_quota + %s, update_time = %s WHERE user_id = %s"
+            await async_db.query(update_sql, len(comments), utils.get_current_timestamp(), user_id)
+            utils.logger.info(f"[store.douyin.batch_update_dy_aweme_comments] updated quota for user {user_id}: +{len(comments)}")
+        else:
+            utils.logger.warning(f"[store.douyin.batch_update_dy_aweme_comments] skipped quota update: async_db={bool(async_db)}, user_id={user_id}")
+    except Exception as e:
+        utils.logger.error(f"[store.douyin.batch_update_dy_aweme_comments] update quota failed: {e}")
 
 
 async def update_dy_aweme_comment(aweme_id: str, comment_item: Dict, task_id: str, user_id: str):
