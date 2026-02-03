@@ -42,7 +42,7 @@ async def init_mediacrawler_db():
 
     """
     # Check if pool is already initialized
-    existing_pool = db_conn_pool_var.get()
+    existing_pool = db_conn_pool_var.get(None)
     if existing_pool is not None:
         utils.logger.info("[init_mediacrawler_db] db pool already initialized, skipping")
         return
