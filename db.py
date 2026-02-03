@@ -52,8 +52,8 @@ async def init_mediacrawler_db():
         utils.logger.info(f"[init_mediacrawler_db] Connecting to MySQL at {db_conn_params.get('host')}:{db_conn_params.get('port')} as user {db_conn_params.get('user')}")
         
         pool = await aiomysql.create_pool(
-            autocommit=True,
-            **db_conn_params
+            autocommit=True,            maxsize=3,  # Limit max connections
+            minsize=1,  # Minimum connections            **db_conn_params
         )
         async_db_obj = AsyncMysqlDB(pool)
 

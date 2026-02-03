@@ -93,11 +93,16 @@ DEV_USER_DB_URL = SQLALCHEMY_DATABASE_URI
 
 user_engine = create_engine(
     SQLALCHEMY_DATABASE_URI,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,  # Reduce pool size
+    max_overflow=10,  # Reduce overflow
     pool_timeout=30,
-    pool_recycle=360000,  # Recycle connections after 30 minutes
-    pool_pre_ping=True
+    pool_recycle=3600,  # Recycle connections after 1 hour instead of 10
+    pool_pre_ping=True,  # Test connections before using
+    echo_pool=False,  # Disable pool debug logging
+    connect_args={
+        'charset': 'utf8mb4',
+        'autocommit': True
+    }
     )
 UserSession = sessionmaker(bind=user_engine)
 
