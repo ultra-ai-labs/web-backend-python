@@ -52,8 +52,10 @@ async def init_mediacrawler_db():
         utils.logger.info(f"[init_mediacrawler_db] Connecting to MySQL at {db_conn_params.get('host')}:{db_conn_params.get('port')} as user {db_conn_params.get('user')}")
         
         pool = await aiomysql.create_pool(
-            autocommit=True,            maxsize=3,  # Limit max connections
-            minsize=1,  # Minimum connections            **db_conn_params
+            autocommit=True,
+            maxsize=2,  # 更小的最大连接数
+            minsize=1,  # 最小连接数
+            **db_conn_params
         )
         async_db_obj = AsyncMysqlDB(pool)
 
@@ -62,7 +64,8 @@ async def init_mediacrawler_db():
         media_crawler_db_var.set(async_db_obj)
         utils.logger.info("[init_mediacrawler_db] Database connection pool created successfully")
     except Exception as e:
-        utils.logger.error(f"[init_mediacrawler_db] Failed to create database connection pool: {e}")
+        utils.logger.error(f"[init_mediacrawler_db] Failed to create database connection pool: {e}", exc_info=True)
+        raise
         raise
 
 
