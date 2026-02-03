@@ -41,12 +41,6 @@ async def init_mediacrawler_db():
     Returns:
 
     """
-    # Check if pool is already initialized
-    existing_pool = db_conn_pool_var.get()
-    if existing_pool is not None:
-        utils.logger.info("[init_mediacrawler_db] db pool already initialized, skipping")
-        return
-    
     db_conn_params = parse_mysql_url(config.RELATION_DB_URL)
     pool = await aiomysql.create_pool(
         autocommit=True,
