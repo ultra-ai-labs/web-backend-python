@@ -99,6 +99,7 @@ user_engine = create_engine(
     pool_recycle=600,  # 10分钟回收一次
     pool_pre_ping=True,
     echo_pool=False,
+    pool_reset_on_return=None,  # 不要自动reset，避免对死连接执行rollback
     connect_args={
         'charset': 'utf8mb4',
         'connect_timeout': 5,
