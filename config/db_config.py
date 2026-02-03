@@ -3,7 +3,7 @@ import time
 import urllib.parse
 from urllib.parse import urlparse, quote_plus
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, exc
+from sqlalchemy import create_engine, exc, text
 from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
@@ -116,7 +116,7 @@ def get_session():
         try:
             session = UserSession()
             # 测试连接是否有效
-            session.execute('SELECT 1')
+            session.execute(text('SELECT 1'))
             session.commit()
             break
         except (exc.OperationalError, exc.DBAPIError) as e:
