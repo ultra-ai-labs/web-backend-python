@@ -93,19 +93,17 @@ DEV_USER_DB_URL = SQLALCHEMY_DATABASE_URI
 
 user_engine = create_engine(
     SQLALCHEMY_DATABASE_URI,
-    pool_size=3,  # 更小的池大小
-    max_overflow=5,  # 更小的溢出
-    pool_timeout=20,  # 更短的超时
-    pool_recycle=1800,  # 30分钟回收一次（更频繁）
-    pool_pre_ping=True,  # 每次使用前检测连接
+    pool_size=3,
+    max_overflow=5,
+    pool_timeout=20,
+    pool_recycle=600,  # 10分钟回收一次
+    pool_pre_ping=True,
     echo_pool=False,
-    pool_reset_on_return='rollback',  # 重置连接状态
     connect_args={
         'charset': 'utf8mb4',
-        'autocommit': True,
-        'connect_timeout': 10,  # 连接超时
-        'read_timeout': 30,  # 读超时
-        'write_timeout': 30  # 写超时
+        'connect_timeout': 5,
+        'read_timeout': 30,
+        'write_timeout': 30
     }
     )
 UserSession = sessionmaker(bind=user_engine)
@@ -113,15 +111,27 @@ UserSession = sessionmaker(bind=user_engine)
 
 def get_session():
     session = None
-    retries = 5
+    retries = 3
     while retries > 0:
         try:
             session = UserSession()
+            # 测试连接是否有效
+            session.execute('SELECT 1')
+            session.commit()
             break
-        except exc.OperationalError as e:
-            print(f"Connection failed, retrying... {retries} retries left")
-            time.sleep(5)  # Wait before retrying
+        except (exc.OperationalError, exc.DBAPIError) as e:
+            if session:
+                session.rollback()
+                session.close()
+                session = None
+            print(f"Connection failed, retrying... {retries} retries left: {e}")
+            time.sleep(1)
             retries -= 1
+        except Exception as e:
+            if session:
+                session.rollback()
+                session.close()
+            raise e
 
     if session is None:
         raise Exception("Could not establish a database connection after multiple retries")
