@@ -845,4 +845,8 @@ def upload_to_qiniu(file_path, file_name):
         raise Exception(f"上传到七牛云失败: {info}")
 
 if __name__ == "__main__":
+    # 注册 blueprints
+    from app.controller import register_blueprints
+    register_blueprints(app)
+    
     app.run(host="0.0.0.0", port=3001)
