@@ -132,7 +132,6 @@ def update_market():
 
 
 @message_bp.route("/get_simple_marketing_user", methods=["POST"])
-@token_required
 def get_simple_marketing_user():
     data = request.json
     task_id = data.get("task_id", "")
