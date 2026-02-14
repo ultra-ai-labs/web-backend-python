@@ -137,14 +137,11 @@ def get_simple_marketing_user():
     task_id = data.get("task_id", "")
     task_step_type = data.get("task_step_type", TaskStepType.MARKETING)
 
-    try:
-        user_id = g.current_user.user_id
-    except Exception as e:
-        user_id = "super_admin"
-
-    task = task_repo.get_task_by_id(task_id, user_id)
+    # 使用 get_task_by_super_admin 不验证系统用户权限
+    # 因为 reply-executer 插件没有系统用户 token
+    task = task_repo.get_task_by_super_admin(task_id)
     if task is None:
-        return jsonify({"status": 400, "msg": "user and task are not correct"}), 400
+        return jsonify({"status": 400, "msg": "task not found"}), 400
 
     task_step = task_step_repo.get_task_step_by_task_id_and_type(task_id, TaskStepType.MARKETING)
     if task_step is None:
