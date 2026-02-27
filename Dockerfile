@@ -1,33 +1,31 @@
-# 使用 Playwright 官方基础镜像
-FROM mcr.microsoft.com/playwright/python:v1.22.0-focal
+# 保持使用官方 Playwright 镜像，这是为了稳定运行浏览器，不分家
+FROM mcr.microsoft.com/playwright/python:v1.42.0-jammy
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制当前目录的内容到工作目录
-COPY . /app
+# 环境变量优化
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright
 
-# 设置 pip 使用清华源
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+# 这里的库是根据你手动部署 OpenCloudOS 的经验总结的
+RUN apt-get update && apt-get install -y \
+    libzbar0 \
+    default-libmysqlclient-dev \
+    libgl1-mesa-glx \
+    nodejs \
+    npm \
+    # 增加字体支持，防止抓取网页时乱码
+    fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 
-# 安装 Python 依赖
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# 安装 Playwright 依赖并设置环境变量使用国内镜像
-RUN apt-get update && apt-get install -y wget gnupg
-RUN wget -qO- https://deb.playwright.dev/gpg | apt-key add -
-RUN echo "deb https://deb.playwright.dev/ focal main" | tee /etc/apt/sources.list.d/playwright.list
-RUN apt-get update && apt-get install -y playwright
+COPY . .
 
-# 设置 Playwright 使用国内镜像
-ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npm.taobao.org/mirrors
+# 暴露 3001
+EXPOSE 3001
 
-# 安装 Playwright 浏览器
-RUN playwright install
-
-# 暴露端口
-EXPOSE 8000
-
-# 启动命令
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", "test_main:n_app"]
+# Gunicorn 启动。注意这里增加了 --access-logfile - 方便你在 docker logs 里看到 OpenCloudOS 风格的日志
+CMD ["gunicorn", "--workers", "2", "--bind", "0.0.0.0:3001", "n_main:n_app", "--timeout", "300", "--access-logfile", "-"]
