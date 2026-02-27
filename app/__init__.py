@@ -29,6 +29,29 @@ def create_app():
          allow_headers=["Content-Type", "Authorization", "x-admin-password"],
          expose_headers=["Authorization"])
 
+    # Ensure OPTIONS preflight requests always get proper CORS response
+    @n_app.before_request
+    def handle_options():
+        from flask import request, make_response
+        if request.method == 'OPTIONS':
+            origin = request.headers.get('Origin')
+            allowed = [
+                'http://ultra-ai.site',
+                'http://43.132.185.90',
+                'http://43.161.246.45',
+                'http://localhost:3000',
+                'http://localhost:3001',
+            ]
+            resp = make_response('', 204)
+            if origin and origin in allowed:
+                resp.headers['Access-Control-Allow-Origin'] = origin
+                resp.headers['Access-Control-Allow-Credentials'] = 'true'
+                resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,x-admin-password'
+                resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+            else:
+                resp.headers['Access-Control-Allow-Origin'] = 'null'
+            return resp
+
     # reduce noisy third-party library logging
     import logging
     for noisy in ("httpx", "qcloud_cos.cos_client", "qcloud_cos"):
@@ -69,6 +92,27 @@ def create_app_with_test():
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "x-admin-password"],
          expose_headers=["Authorization"])
+    @n_app.before_request
+    def handle_options_test():
+        from flask import request, make_response
+        if request.method == 'OPTIONS':
+            origin = request.headers.get('Origin')
+            allowed = [
+                'http://ultra-ai.site',
+                'http://43.132.185.90',
+                'http://43.161.246.45',
+                'http://localhost:3000',
+                'http://localhost:3001',
+            ]
+            resp = make_response('', 204)
+            if origin and origin in allowed:
+                resp.headers['Access-Control-Allow-Origin'] = origin
+                resp.headers['Access-Control-Allow-Credentials'] = 'true'
+                resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,x-admin-password'
+                resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+            else:
+                resp.headers['Access-Control-Allow-Origin'] = 'null'
+            return resp
         # Ensure CORS headers are always present (helps with preflight failures)
         @n_app.after_request
         def add_cors_headers(response):
