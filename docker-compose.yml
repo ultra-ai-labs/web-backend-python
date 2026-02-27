@@ -10,12 +10,13 @@ services:
     env_file:
       - .env
     volumes:
-      - ./browser_data:/app/browser_data  # 持久化浏览器 Cookie 和 Session
-      - ./static:/app/static              # 持久化静态文件
-      - ./store:/app/store                # 持久化抓取的数据
+      - ./browser_data:/app/browser_data
+      - ./static:/app/static
+      - ./store:/app/store
+      - /dev/shm:/dev/shm                            # 增加共享内存
+    shm_size: '1gb'                                 # 可根据需要调整
     healthcheck:
-      # 如果 app 没定义 /health，可以用简单的 python 脚本心跳
-      test: ["CMD-SHELL", "curl -f http://localhost:3001/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3

@@ -1,31 +1,34 @@
-# 保持使用官方 Playwright 镜像，这是为了稳定运行浏览器，不分家
 FROM mcr.microsoft.com/playwright/python:v1.42.0-jammy
 
 WORKDIR /app
 
-# 环境变量优化
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright
 
-# 这里的库是根据你手动部署 OpenCloudOS 的经验总结的
+# 基础系统依赖（确保 Playwright 与 Chromium 运行）
 RUN apt-get update && apt-get install -y \
     libzbar0 \
     default-libmysqlclient-dev \
     libgl1-mesa-glx \
     nodejs \
     npm \
-    # 增加字体支持，防止抓取网页时乱码
     fonts-noto-cjk \
+    libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1 \
+    nss nspr libxkbcommon0 libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
+
+# 确保 Playwright 的系统依赖和 Chromium 浏览器已安装（有些基础镜像已包含，但显式安装更稳）
+RUN playwright install-deps && \
+    playwright install chromium
 
 COPY . .
 
-# 暴露 3001
 EXPOSE 3001
 
-# Gunicorn 启动。注意这里增加了 --access-logfile - 方便你在 docker logs 里看到 OpenCloudOS 风格的日志
+# 使用 gunicorn 启动 n_main:n_app（与 deploy_manual/手动运行 n_main.py 不冲突）
 CMD ["gunicorn", "--workers", "2", "--bind", "0.0.0.0:3001", "n_main:n_app", "--timeout", "300", "--access-logfile", "-"]
