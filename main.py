@@ -66,8 +66,8 @@ current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 analysis_name = f"analyzed_comments_{current_time}"
 
 # 配置跨域，允许自定义头 x-admin-password 用于管理员操作
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization", "x-admin-password"])
+CORS(app, resources={r"/*": {"origins": ["http://ultra-ai.site", "http://localhost:3000"]}}, supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "x-admin-password"])
 @app.route('/health', methods=['GET'])
 def health():
     # simple health check

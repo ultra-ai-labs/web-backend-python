@@ -16,7 +16,7 @@ def create_app():
 
     # 配置跨域：显式允许开发常用来源并支持凭证和授权头
     CORS(n_app,
-          resources={r"/*": {"origins": [
+         resources={r"/*": {"origins": [
              "http://localhost:3000",
              "http://localhost:3001",
              "http://127.0.0.1:3001",
@@ -24,29 +24,11 @@ def create_app():
              "http://43.132.185.90",
              "http://43.132.185.90:3000",
              "http://43.132.185.90:3001",
+             "http://43.161.246.45"
          ]}},
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "x-admin-password"],
          expose_headers=["Authorization"])
-
-    # Ensure every response that comes out of the app contains proper CORS headers
-    @n_app.after_request
-    def ensure_cors_headers(response):
-        from flask import request
-        origin = request.headers.get('Origin')
-        allowed = {
-            'http://ultra-ai.site',
-            'http://43.132.185.90',
-            'http://43.161.246.45',
-            'http://localhost:3000',
-            'http://localhost:3001',
-        }
-        if origin and origin in allowed:
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,x-admin-password'
-            response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-        return response
 
     # reduce noisy third-party library logging
     import logging
