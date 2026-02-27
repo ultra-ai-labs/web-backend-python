@@ -69,6 +69,25 @@ def create_app_with_test():
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "x-admin-password"],
          expose_headers=["Authorization"])
+        # Ensure CORS headers are always present (helps with preflight failures)
+        @n_app.after_request
+        def add_cors_headers(response):
+            origin = response.headers.get('Access-Control-Allow-Origin')
+            if not origin:
+                response.headers.add('Access-Control-Allow-Origin', 'http://ultra-ai.site')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-admin-password')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response
+        @n_app.after_request
+        def add_cors_headers_test(response):
+            origin = response.headers.get('Access-Control-Allow-Origin')
+            if not origin:
+                response.headers.add('Access-Control-Allow-Origin', 'http://ultra-ai.site')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-admin-password')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response
 
     # 初始化拓展
     # with n_app.app_context():
