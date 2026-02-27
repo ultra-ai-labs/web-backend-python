@@ -29,28 +29,24 @@ def create_app():
          allow_headers=["Content-Type", "Authorization", "x-admin-password"],
          expose_headers=["Authorization"])
 
-    # Ensure OPTIONS preflight requests always get proper CORS response
-    @n_app.before_request
-    def handle_options():
-        from flask import request, make_response
-        if request.method == 'OPTIONS':
-            origin = request.headers.get('Origin')
-            allowed = [
-                'http://ultra-ai.site',
-                'http://43.132.185.90',
-                'http://43.161.246.45',
-                'http://localhost:3000',
-                'http://localhost:3001',
-            ]
-            resp = make_response('', 204)
-            if origin and origin in allowed:
-                resp.headers['Access-Control-Allow-Origin'] = origin
-                resp.headers['Access-Control-Allow-Credentials'] = 'true'
-                resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,x-admin-password'
-                resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-            else:
-                resp.headers['Access-Control-Allow-Origin'] = 'null'
-            return resp
+    # Ensure every response that comes out of the app contains proper CORS headers
+    @n_app.after_request
+    def ensure_cors_headers(response):
+        from flask import request
+        origin = request.headers.get('Origin')
+        allowed = {
+            'http://ultra-ai.site',
+            'http://43.132.185.90',
+            'http://43.161.246.45',
+            'http://localhost:3000',
+            'http://localhost:3001',
+        }
+        if origin and origin in allowed:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,x-admin-password'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+        return response
 
     # reduce noisy third-party library logging
     import logging
