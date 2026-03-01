@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     fonts-noto-cjk \
     libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
     libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1 \
-    nss nspr libxkbcommon0 libgdk-pixbuf2.0-0 \
+    libnss3 libnspr4 libxkbcommon0 libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
