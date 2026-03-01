@@ -182,6 +182,8 @@ class CommentAnalysisService:
         # pending DB updates per task: list of (comment_id, extra_data)
         self._pending_updates = {}
         self._db_batch_size = getattr(config, 'ANALYSIS_DB_BATCH_SIZE', 50)
+        # track comments currently being processed per task to avoid duplicates
+        self._processing_comments = {}
 
     def stop_analysis(self, task_id, user_id):
         key = (str(task_id), str(user_id))
@@ -208,6 +210,9 @@ class CommentAnalysisService:
                     except Exception:
                         pass
                 self._child_futures[key] = []
+                # clear processing comments set for this task
+                if key in self._processing_comments:
+                    del self._processing_comments[key]
             return True
         return False
 
@@ -248,77 +253,86 @@ class CommentAnalysisService:
         key = (str(task_id), str(user_id))
         stop_event = Event()
         self._stop_events[key] = stop_event
+        # initialize processing set for this task
+        with self.lock:
+            self._processing_comments[key] = set()
 
         @copy_current_request_context
         @retry_on_exception(max_retries=3, delay=2, fallback_func=self.fallback_analysis)
         def analyze_comments_chunk(comment, task_id, platform, request, output_fields):
-            if stop_event.is_set():
-                return
-            if comment.extra_data is not None:
-                return
-
-            # prepare serializable comment data for subprocess
-            comment_data = {
-                'content': getattr(comment, 'content', ''),
-                'ip_location': getattr(comment, 'ip_location', ''),
-                'user_signature': getattr(comment, 'user_signature', ''),
-                'nickname': getattr(comment, 'nickname', ''),
-                'comment_id': getattr(comment, 'comment_id', None),
-                'user_id': getattr(comment, 'user_id', None),
-                'aweme_id': getattr(comment, 'aweme_id', None),
-                'note_id': getattr(comment, 'note_id', None)
-            }
-
-            # prepare output fields as plain dicts for pickling
-            output_fields_data = []
             try:
-                for f in output_fields:
-                    output_fields_data.append({'key': f.key, 'explanation': f.explanation})
-            except Exception:
-                output_fields_data = output_fields
+                if stop_event.is_set():
+                    return
+                if comment.extra_data is not None:
+                    return
 
-            # submit to persistent process pool
-            future = None
-            try:
-                future = self._process_pool.submit(_gpt_worker_process, comment_data, request.analysis_request, output_fields_data)
-                with self.lock:
-                    futs = self._child_futures.setdefault(key, [])
-                    futs.append(future)
+                # prepare serializable comment data for subprocess
+                comment_data = {
+                    'content': getattr(comment, 'content', ''),
+                    'ip_location': getattr(comment, 'ip_location', ''),
+                    'user_signature': getattr(comment, 'user_signature', ''),
+                    'nickname': getattr(comment, 'nickname', ''),
+                    'comment_id': getattr(comment, 'comment_id', None),
+                    'user_id': getattr(comment, 'user_id', None),
+                    'aweme_id': getattr(comment, 'aweme_id', None),
+                    'note_id': getattr(comment, 'note_id', None)
+                }
 
-                timeout = getattr(config, 'ANALYSIS_CALL_TIMEOUT', 60)
+                # prepare output fields as plain dicts for pickling
+                output_fields_data = []
                 try:
-                    result = future.result(timeout=timeout)
+                    for f in output_fields:
+                        output_fields_data.append({'key': f.key, 'explanation': f.explanation})
                 except Exception:
-                    try:
-                        future.cancel()
-                    except Exception:
-                        pass
-                    result = None
-            finally:
-                with self.lock:
-                    try:
-                        if future in self._child_futures.get(key, []):
-                            self._child_futures[key].remove(future)
-                    except Exception:
-                        pass
+                    output_fields_data = output_fields
 
-            if stop_event.is_set():
-                return
-
-            # process result
-            if not result:
-                json_result = self._generate_default_json_result(output_fields)
-            else:
+                # submit to persistent process pool
+                future = None
                 try:
-                    clean_result = result.replace("```json", "").replace("```", "").strip()
-                    json_result = json.loads(clean_result)
-                except Exception:
+                    future = self._process_pool.submit(_gpt_worker_process, comment_data, request.analysis_request, output_fields_data)
+                    with self.lock:
+                        futs = self._child_futures.setdefault(key, [])
+                        futs.append(future)
+
+                    timeout = getattr(config, 'ANALYSIS_CALL_TIMEOUT', 60)
+                    try:
+                        result = future.result(timeout=timeout)
+                    except Exception:
+                        try:
+                            future.cancel()
+                        except Exception:
+                            pass
+                        result = None
+                finally:
+                    with self.lock:
+                        try:
+                            if future in self._child_futures.get(key, []):
+                                self._child_futures[key].remove(future)
+                        except Exception:
+                            pass
+
+                if stop_event.is_set():
+                    return
+
+                # process result
+                if not result:
                     json_result = self._generate_default_json_result(output_fields)
+                else:
+                    try:
+                        clean_result = result.replace("```json", "").replace("```", "").strip()
+                        json_result = json.loads(clean_result)
+                    except Exception:
+                        json_result = self._generate_default_json_result(output_fields)
 
-            # append to pending updates (batch commit handled by flusher)
-            with self.lock:
-                pending = self._pending_updates.setdefault(key, [])
-                pending.append((comment.comment_id, json_result))
+                # append to pending updates (batch commit handled by flusher)
+                with self.lock:
+                    pending = self._pending_updates.setdefault(key, [])
+                    pending.append((comment.comment_id, json_result))
+            finally:
+                # Always remove from processing set when done (success or failure)
+                with self.lock:
+                    processing_set = self._processing_comments.get(key, set())
+                    processing_set.discard(comment.comment_id)
 
 
         @copy_current_request_context
@@ -352,6 +366,22 @@ class CommentAnalysisService:
                 comments = get_comments()
                 if not comments:
                     break
+
+                # Filter out comments that are already being processed
+                with self.lock:
+                    processing_set = self._processing_comments.get(key, set())
+                    comments = [c for c in comments if c.comment_id not in processing_set]
+                
+                if not comments:
+                    # All comments are being processed, wait before checking again
+                    time.sleep(1)
+                    continue
+                
+                # Mark these comments as being processed
+                with self.lock:
+                    processing_set = self._processing_comments.setdefault(key, set())
+                    for comment in comments:
+                        processing_set.add(comment.comment_id)
 
                 num_threads_to_use = min(num_threads, len(comments))
                 chunk_size = max(1, len(comments) // num_threads_to_use)
@@ -477,9 +507,12 @@ class CommentAnalysisService:
         except Exception:
             pass
 
-        # cleanup stop event
+        # cleanup stop event and processing set
         if key in self._stop_events:
             del self._stop_events[key]
+        with self.lock:
+            if key in self._processing_comments:
+                del self._processing_comments[key]
 
         if stop_event.is_set():
             print(f"[CommentAnalysisService] task {task_id} was stopped before completion")
