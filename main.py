@@ -54,9 +54,9 @@ task_output_paths = {}
 task_stop_events = {}
 
 # 七牛云
-AccessKey = "QC7jpcVf0z25_HfdSVHJnZiUNcWdwvZoK1u6oxgn"
-SecretKey = "pb_BRTF72Y-8I3LYvpOMqxHQTFLUkEjMENOXWwsj"
-BucketName = "test-storage111111"
+AccessKey = os.getenv('QINIU_ACCESS_KEY', '')
+SecretKey = os.getenv('QINIU_SECRET_KEY', '')
+BucketName = os.getenv('QINIU_BUCKET_NAME', '')
 
 # 初始化Auth对象
 q = qiniu.Auth(AccessKey, SecretKey)
@@ -632,8 +632,12 @@ def handle_gpt4o(messages):
 
 def handle_deepseek(messages):
     model = "deepseek-chat"
+    
+    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("未能获取到 DEEPSEEK_API_KEY，请检查 .env 文件是否正确配置。")
 
-    client = OpenAI(api_key="sk-6a91a7a0009548a5a53990ddb76b28d8",
+    client = OpenAI(api_key=DEEPSEEK_API_KEY,
                     base_url="https://api.deepseek.com/")
     # 针对OpenAI GPT-4的处理逻辑
     response = client.chat.completions.create(

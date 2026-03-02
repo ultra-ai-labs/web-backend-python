@@ -168,4 +168,7 @@ cython_debug/
 /data/
 /cache
 
+# macOS metadata files
+.DS_Store
 */.DS_Store
+._*
