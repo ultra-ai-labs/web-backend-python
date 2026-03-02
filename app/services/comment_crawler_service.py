@@ -14,6 +14,7 @@ from app.constants import TaskStepStatus, TaskStepType
 from app.model import DouyinAwemeComment, BilibiliVideoComment, XhsNoteComment, KuaishouVideoComment
 from app.repo.task_repo import TaskRepo
 from app.repo.task_step_repo import TaskStepRepo
+from app.repo.quota_repo import QuotaRepo
 from base.base_crawler import AbstractCrawler
 from media_platform.bilibili import BilibiliCrawler
 from media_platform.douyin import DouYinCrawler
@@ -115,6 +116,25 @@ class CommentCrawlerService:
             # Signal the progress thread to stop
             stop_event.set()
             progress_thread.join()
+            
+            # Update used_quota with crawled comments count
+            with current_app.app_context():
+                try:
+                    if platform == "dy":
+                        n_comments = douyin_comment_repo.get_comments_by_task_id(task_id)
+                    else:
+                        n_comments = xhs_comment_repo.get_comments_by_task_id(task_id)
+                    
+                    crawled_count = len(n_comments)
+                    if crawled_count > 0:
+                        quota_repo = QuotaRepo()
+                        quota = quota_repo.get_quota_by_user_id(user_id)
+                        current_used = int(quota.used_quota or 0) if quota else 0
+                        new_used = current_used + crawled_count
+                        quota_repo.update_used_quota(user_id, new_used)
+                except Exception as quota_err:
+                    utils.logger.error(f"[run_crawler] Failed to update quota: {quota_err}")
+            
             task_step_service.update_task_step_status(task_id, TaskStepType.CRAWLER, TaskStepStatus.FINISH)
 
             if config.SAVE_DATA_OPTION == "db":
@@ -122,6 +142,25 @@ class CommentCrawlerService:
             return
         stop_event.set()
         progress_thread.join()
+        
+        # Update used_quota with crawled comments count
+        with current_app.app_context():
+            try:
+                if platform == "dy":
+                    n_comments = douyin_comment_repo.get_comments_by_task_id(task_id)
+                else:
+                    n_comments = xhs_comment_repo.get_comments_by_task_id(task_id)
+                
+                crawled_count = len(n_comments)
+                if crawled_count > 0:
+                    quota_repo = QuotaRepo()
+                    quota = quota_repo.get_quota_by_user_id(user_id)
+                    current_used = int(quota.used_quota or 0) if quota else 0
+                    new_used = current_used + crawled_count
+                    quota_repo.update_used_quota(user_id, new_used)
+            except Exception as quota_err:
+                utils.logger.error(f"[run_crawler] Failed to update quota: {quota_err}")
+        
         task_step_service.update_task_step_status(task_id, TaskStepType.CRAWLER, TaskStepStatus.FINISH)
 
         if config.SAVE_DATA_OPTION == "db":

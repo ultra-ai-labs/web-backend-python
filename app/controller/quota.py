@@ -47,7 +47,8 @@ def get_quota():
             'data': {
                 'intent_customer_count': intent_count,
                 'total_quota': int(quota.total_quota or 0),
-                'used_quota': int(quota.used_quota or 0)
+                'used_quota': int(quota.used_quota or 0),
+                'analysised_quota': int(quota.analysised_quota or 0)
             }
         })
     except Exception as e:

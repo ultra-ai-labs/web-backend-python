@@ -433,13 +433,13 @@ class CommentAnalysisService:
                                     updated_count = self.douyin_comment_repo.batch_update_comments(uniq_list, task_id)
                                 else:
                                     updated_count = self.xhs_comment_repo.batch_update_comments(uniq_list, task_id)
-                                # increment user's used_quota by number of actually-updated comments
+                                # increment user's analysised_quota by number of actually-updated comments
                                 try:
                                     if updated_count and int(updated_count) > 0:
                                         quota = self.quota_repo.get_quota_by_user_id(user_id)
-                                        current_used = int(quota.used_quota or 0) if quota else 0
-                                        new_used = current_used + int(updated_count)
-                                        self.quota_repo.update_used_quota(user_id, new_used)
+                                        current_analysised = int(quota.analysised_quota or 0) if quota else 0
+                                        new_analysised = current_analysised + int(updated_count)
+                                        self.quota_repo.update_analysised_quota(user_id, new_analysised)
                                 except Exception:
                                     pass
                             except Exception:
@@ -464,13 +464,13 @@ class CommentAnalysisService:
                                 updated_count = self.douyin_comment_repo.batch_update_comments(uniq_list, task_id)
                             else:
                                 updated_count = self.xhs_comment_repo.batch_update_comments(uniq_list, task_id)
-                            # increment used_quota
+                            # increment analysised_quota
                             try:
                                 if updated_count and int(updated_count) > 0:
                                     quota = self.quota_repo.get_quota_by_user_id(user_id)
-                                    current_used = int(quota.used_quota or 0) if quota else 0
-                                    new_used = current_used + int(updated_count)
-                                    self.quota_repo.update_used_quota(user_id, new_used)
+                                    current_analysised = int(quota.analysised_quota or 0) if quota else 0
+                                    new_analysised = current_analysised + int(updated_count)
+                                    self.quota_repo.update_analysised_quota(user_id, new_analysised)
                             except Exception:
                                 pass
                         except Exception:

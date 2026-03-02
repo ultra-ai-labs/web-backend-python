@@ -8,7 +8,8 @@ class Quota(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True, comment='自增ID')
     user_id = db.Column(db.String(64), nullable=False, comment='用户ID')
     total_quota = db.Column(db.BigInteger, nullable=False, default=0, comment='总额度')
-    used_quota = db.Column(db.BigInteger, nullable=False, default=0, comment='已使用额度')
+    used_quota = db.Column(db.BigInteger, nullable=False, default=0, comment='已使用额度（爬虫）')
+    analysised_quota = db.Column(db.BigInteger, nullable=False, default=0, comment='已分析额度')
     period_start = db.Column(db.BigInteger, nullable=True, comment='配额周期开始时间戳')
     period_end = db.Column(db.BigInteger, nullable=True, comment='配额周期结束时间戳')
     create_time = db.Column(db.BigInteger, nullable=False, default=get_current_timestamp, comment='创建时间戳')
@@ -20,6 +21,7 @@ class Quota(db.Model):
             'user_id': self.user_id,
             'total_quota': int(self.total_quota or 0),
             'used_quota': int(self.used_quota or 0),
+            'analysised_quota': int(self.analysised_quota or 0),
             'period_start': self.period_start,
             'period_end': self.period_end,
             'create_time': self.create_time,

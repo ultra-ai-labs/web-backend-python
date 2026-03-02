@@ -159,9 +159,10 @@ def update_user_quota(user_id):
         if not _check_admin():
             return jsonify({'status': 401, 'msg': 'admin password required'}), 401
         data = request.json or {}
-        # allow updating total_quota and used_quota
+        # allow updating total_quota, used_quota and analysised_quota
         total = data.get('total_quota')
         used = data.get('used_quota')
+        analysised = data.get('analysised_quota')
         quota = quota_repo.get_quota_by_user_id(user_id)
         if not quota:
             quota = quota_repo.create_or_get_quota(user_id, total_quota=0, used_quota=0)
@@ -176,9 +177,16 @@ def update_user_quota(user_id):
                 quota.used_quota = int(used)
             except Exception:
                 pass
+        if analysised is not None:
+            try:
+                quota.analysised_quota = int(analysised)
+            except Exception:
+                pass
         quota.update_time = quota.update_time or None
         # persist via repo update method
         updated = quota_repo.update_used_quota(user_id, quota.used_quota)
+        if analysised is not None:
+            quota_repo.update_analysised_quota(user_id, quota.analysised_quota)
         # ensure total_quota saved too
         try:
             from app.extensions import db
