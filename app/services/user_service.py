@@ -46,6 +46,13 @@ class UserService:
             # store password as-is (plain text)
             # 注意：所有时间戳统一使用13位毫秒级格式 (e.g., 1767260800000)
             # 如果 expire_time 是10位秒级格式，需要转换为毫秒级
+            
+            # Convert empty strings to None to avoid UNIQUE constraint violations
+            if email == "":
+                email = None
+            if username == "":
+                username = None
+            
             if expire_time and expire_time < 1000000000000:  # 如果是10位时间戳
                 expire_time = expire_time * 1000  # 转换为毫秒级
             
@@ -56,7 +63,16 @@ class UserService:
             # Refresh UserRepo cache to see new user immediately
             self.user_repo.refresh_session()
             return user
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
+            import traceback
+            print(f"[UserService.create_user] Error: {e}")
+            print(traceback.format_exc())
+            self.db.session.rollback()
+            return None
+        except Exception as e:
+            import traceback
+            print(f"[UserService.create_user] Error: {e}")
+            print(traceback.format_exc())
             self.db.session.rollback()
             return None
 
@@ -66,6 +82,12 @@ class UserService:
             if not user:
                 return None
             # store password as-is (plain text)
+            # Convert empty strings to None to avoid UNIQUE constraint violations
+            if 'email' in kwargs and kwargs['email'] == "":
+                kwargs['email'] = None
+            if 'username' in kwargs and kwargs['username'] == "":
+                kwargs['username'] = None
+            
             for k, v in kwargs.items():
                 if hasattr(user, k):
                     # 如果更新 expire_time，确保使用13位毫秒级格式
@@ -78,7 +100,16 @@ class UserService:
             # Refresh UserRepo cache to see updated user immediately
             self.user_repo.refresh_session()
             return user
-        except SQLAlchemyError:
+        except SQLAlchemyError as e:
+            import traceback
+            print(f"[UserService.update_user] Error: {e}")
+            print(traceback.format_exc())
+            self.db.session.rollback()
+            return None
+        except Exception as e:
+            import traceback
+            print(f"[UserService.update_user] Error: {e}")
+            print(traceback.format_exc())
             self.db.session.rollback()
             return None
 

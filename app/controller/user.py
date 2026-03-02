@@ -77,6 +77,9 @@ def create_user():
             return jsonify({'status': 500, 'msg': 'create failed'}), 500
         return jsonify({'status': 200, 'msg': 'success', 'data': user.to_dict()}), 200
     except Exception as e:
+        import traceback
+        print(f"[create_user] Error: {e}")
+        print(traceback.format_exc())
         return jsonify({'status': 500, 'msg': f'error: {e}'}), 500
 
 
