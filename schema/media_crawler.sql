@@ -351,9 +351,7 @@ CREATE TABLE `users`  (
   `expire_time` bigint NULL DEFAULT NULL COMMENT '账号过期时间戳',
   `create_time` bigint NOT NULL COMMENT '创建时间戳',
   `update_time` bigint NULL DEFAULT NULL COMMENT '更新时间戳',
-  PRIMARY KEY (`user_id`) USING BTREE,
-  UNIQUE INDEX `username`(`username` ASC) USING BTREE,
-  UNIQUE INDEX `email`(`email` ASC) USING BTREE
+  PRIMARY KEY (`user_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '用户表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
