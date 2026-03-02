@@ -134,7 +134,23 @@ def list_users():
         if limit > 1000:
             limit = 1000
         users = user_service.list_users(offset=offset, limit=limit)
-        data = [u.to_dict() for u in users] if users else []
+        
+        # 为每个用户附加 quota 信息
+        data = []
+        for u in users:
+            user_dict = u.to_dict()
+            # 获取用户的 quota 信息
+            quota = quota_repo.get_quota_by_user_id(u.user_id)
+            if quota:
+                user_dict['total_quota'] = int(quota.total_quota or 0)
+                user_dict['used_quota'] = int(quota.used_quota or 0)
+                user_dict['analysised_quota'] = int(quota.analysised_quota or 0)
+            else:
+                user_dict['total_quota'] = 0
+                user_dict['used_quota'] = 0
+                user_dict['analysised_quota'] = 0
+            data.append(user_dict)
+        
         return jsonify({'status': 200, 'msg': 'success', 'data': data}), 200
     except Exception as e:
         return jsonify({'status': 500, 'msg': f'error: {e}'}), 500
