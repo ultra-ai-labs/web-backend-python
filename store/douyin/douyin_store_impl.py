@@ -213,7 +213,6 @@ class DouyinDbStoreImplement(AbstractStore):
         comment_id = comment_item.get("comment_id")
         # comment_detail: Dict = await query_comment_by_comment_id_and_task_id(comment_id=comment_id, task_id=task_id)
         comment_detail = await check_user_owns_comment_for_task(user_id=user_id, comment_id=comment_id, task_id=task_id)
-        print(comment_detail)
 
         if not comment_detail:
             comment_item["add_ts"] = utils.get_current_timestamp()
