@@ -123,6 +123,16 @@ def update_market():
     platform = data.get("platform", "dy")
     market_result = data.get("market_result", "")
 
+    allowed_results = {
+        "已私信",
+        "私信失败",
+        "私信受限",
+        "用户不存在",
+        "已关注",
+    }
+    if market_result not in allowed_results:
+        return jsonify({"status": 400, "msg": f"invalid market_result: {market_result}"}), 400
+
     if platform == "dy":
         result = douyin_comment_repo.update_comment_result_by_sec_uid_and_task_id(user_id, task_id, market_result)
     else:
