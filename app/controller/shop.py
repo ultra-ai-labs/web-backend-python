@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, jsonify, request
@@ -40,7 +39,7 @@ def _resolve_username(data):
 
 
 def _build_initial_password(phone):
-    return f"{phone}{datetime.now().strftime('%y%m%d')}"
+    return f"{phone}ultra-ai"
 
 
 def _resolve_phone(data):

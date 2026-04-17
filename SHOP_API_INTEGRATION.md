@@ -45,13 +45,12 @@ SHOP_API_KEY
 - 商城应直接传 `username`
 - 推荐直接把手机号作为 `username`
 - 若同时传了 `phone`，则仅作为兼容字段使用
-- 新用户初始密码规则为：`username(手机号) + YYMMDD`
+- 新用户初始密码规则为：`username(手机号) + ultra-ai`
 
 示例：
 
 - 手机号：`18888888888`
-- 接口处理日期：`2026-04-17`
-- 初始密码：`18888888888260417`
+- 初始密码：`18888888888ultra-ai`
 
 
 ## 订单处理规则
@@ -196,7 +195,7 @@ POST /shop/order/recharge
 
 - 若系统中不存在该 `username`
   - 自动创建用户
-  - 自动生成初始密码：`phone + YYMMDD`
+  - 自动生成初始密码：`phone + ultra-ai`
   - 按 `sku_type` 对应额度自动增加额度
   - 记录商城订单
   - 返回 `create user and recharge success`
