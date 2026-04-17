@@ -10,6 +10,8 @@ def register_blueprints(app):
     app.register_blueprint(quota_bp, url_prefix='')
     from app.controller.user import user_bp
     app.register_blueprint(user_bp, url_prefix='')
+    from app.controller.shop import shop_bp
+    app.register_blueprint(shop_bp, url_prefix='')
 
 
 def register_blueprints_test(app):
@@ -23,3 +25,5 @@ def register_blueprints_test(app):
     app.register_blueprint(quota_bp, url_prefix='/dev')
     from app.controller.user import user_bp
     app.register_blueprint(user_bp, url_prefix='/dev')
+    from app.controller.shop import shop_bp
+    app.register_blueprint(shop_bp, url_prefix='/dev')

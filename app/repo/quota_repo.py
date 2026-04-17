@@ -62,3 +62,48 @@ class QuotaRepo:
             self.db.session.rollback()
             print(f"Error updating analysised quota for user {user_id}: {e}")
             return None
+
+    def update_total_quota(self, user_id, total_quota):
+        try:
+            quota = Quota.query.filter_by(user_id=user_id).first()
+            if not quota:
+                quota = Quota(
+                    user_id=user_id,
+                    total_quota=total_quota,
+                    used_quota=0,
+                    analysised_quota=0,
+                    create_time=get_current_timestamp()
+                )
+                self.db.session.add(quota)
+            else:
+                quota.total_quota = total_quota
+                quota.update_time = get_current_timestamp()
+            self.db.session.commit()
+            return quota
+        except SQLAlchemyError as e:
+            self.db.session.rollback()
+            print(f"Error updating total quota for user {user_id}: {e}")
+            return None
+
+    def increment_total_quota(self, user_id, quota_delta):
+        try:
+            quota_delta = int(quota_delta or 0)
+            quota = Quota.query.filter_by(user_id=user_id).first()
+            if not quota:
+                quota = Quota(
+                    user_id=user_id,
+                    total_quota=quota_delta,
+                    used_quota=0,
+                    analysised_quota=0,
+                    create_time=get_current_timestamp()
+                )
+                self.db.session.add(quota)
+            else:
+                quota.total_quota = int(quota.total_quota or 0) + quota_delta
+                quota.update_time = get_current_timestamp()
+            self.db.session.commit()
+            return quota
+        except SQLAlchemyError as e:
+            self.db.session.rollback()
+            print(f"Error incrementing total quota for user {user_id}: {e}")
+            return None

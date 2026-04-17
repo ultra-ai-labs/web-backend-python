@@ -13,3 +13,4 @@ from app.model.task import Task
 from app.model.task_step import TaskStep
 from app.model.quota import Quota
 from app.model.user import User
+from app.model.shop_order import ShopOrder

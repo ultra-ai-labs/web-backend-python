@@ -14,8 +14,12 @@ import config
 from base.base_crawler import AbstractLogin
 from tools import utils
 from PIL import Image, ImageOps
-from pyzbar.pyzbar import decode
 import qrcode
+
+try:
+    from pyzbar.pyzbar import decode
+except ImportError:
+    decode = None
 
 class XiaoHongShuLogin(AbstractLogin):
 
@@ -182,6 +186,10 @@ class XiaoHongShuLogin(AbstractLogin):
 
     def show_qrcode(self, qr_code:str) -> None:
         """Parse base64 encoded QR code image and print it to console"""
+        if decode is None:
+            raise RuntimeError(
+                "QR code decoding requires the zbar shared library. Install zbar or use a non-QR login method."
+            )
         if "," in qr_code:
             qr_code = qr_code.split(",")[1]
         qr_code = base64.b64decode(qr_code)
