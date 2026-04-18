@@ -18,6 +18,29 @@ import time
 load_dotenv('.env.prod.local')
 load_dotenv()
 
+SCHEMA_REPAIRS = [
+    {
+        'name': 'quota.analysised_quota',
+        'table': 'quota',
+        'column': 'analysised_quota',
+        'alter_sql': (
+            "ALTER TABLE `quota` "
+            "ADD COLUMN `analysised_quota` bigint NOT NULL DEFAULT 0 "
+            "COMMENT '已分析额度' AFTER `used_quota`"
+        ),
+    },
+    {
+        'name': 'shop_order.amount',
+        'table': 'shop_order',
+        'column': 'amount',
+        'alter_sql': (
+            "ALTER TABLE `shop_order` "
+            "ADD COLUMN `amount` decimal(10,2) DEFAULT NULL "
+            "COMMENT '订单金额' AFTER `user_id`"
+        ),
+    },
+]
+
 def get_db_connection():
     """获取数据库连接"""
     # 尝试从环境变量获取配置
@@ -77,6 +100,60 @@ def record_migration(conn, migration_name):
         conn.commit()
     finally:
         cursor.close()
+
+def table_exists(conn, table_name):
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SHOW TABLES LIKE %s", (table_name,))
+        return cursor.fetchone() is not None
+    finally:
+        cursor.close()
+
+def column_exists(conn, table_name, column_name):
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE %s", (column_name,))
+        return cursor.fetchone() is not None
+    finally:
+        cursor.close()
+
+def repair_required_schema(conn):
+    print("\n🔍 Validating critical schema...")
+    repaired_count = 0
+
+    for repair in SCHEMA_REPAIRS:
+        table_name = repair['table']
+        column_name = repair['column']
+        label = repair['name']
+
+        if not table_exists(conn, table_name):
+            print(f"   ⏭️  Skip repair for {label}: table `{table_name}` does not exist yet")
+            continue
+
+        if column_exists(conn, table_name, column_name):
+            print(f"   ✅ OK: {label}")
+            continue
+
+        print(f"   ⚠️  Missing column detected: {label}")
+        cursor = conn.cursor()
+        try:
+            cursor.execute(repair['alter_sql'])
+            conn.commit()
+            repaired_count += 1
+            print(f"   🔧 Repaired: {label}")
+        except pymysql.Error as e:
+            conn.rollback()
+            error_msg = str(e)
+            if 'Duplicate column' in error_msg or 'already exists' in error_msg:
+                print(f"   ℹ️  Column already exists while repairing {label}")
+            else:
+                print(f"   ❌ Failed to repair {label}: {error_msg}")
+                return False
+        finally:
+            cursor.close()
+
+    print(f"✅ Schema validation finished, repaired {repaired_count} item(s)\n")
+    return True
 
 def execute_migration(conn, sql_file, force=False):
     """执行单个迁移文件"""
@@ -200,6 +277,10 @@ def main():
                     executed_count += 1
 
             print(f"\n📊 Summary: {executed_count} executed, {skipped_count} skipped")
+
+        schema_ok = repair_required_schema(conn)
+        if not schema_ok:
+            return 1
         
         conn.close()
         print("-" * 60)
