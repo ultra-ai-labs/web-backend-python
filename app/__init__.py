@@ -1,4 +1,4 @@
-from flask import Flask, g
+from flask import Flask, g, jsonify
 from flask_cors import CORS
 
 from app.extensions import db, migrate
@@ -46,6 +46,10 @@ def create_app():
     # 注册蓝图
     from app.controller import register_blueprints
     register_blueprints(n_app)
+
+    @n_app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'}), 200
 
     # db.create_all()
     return n_app
@@ -122,6 +126,10 @@ def create_app_with_test():
     # 注册蓝图
     from app.controller import register_blueprints_test
     register_blueprints_test(n_app)
+
+    @n_app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'}), 200
 
     # db.create_all()
     return n_app

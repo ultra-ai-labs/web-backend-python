@@ -29,14 +29,17 @@ git pull --ff-only origin "${BRANCH}"
 echo "[deploy] docker compose build ${SERVICE_NAME}"
 ${DOCKER_COMPOSE_BIN} build "${SERVICE_NAME}"
 
-echo "[deploy] run migrations in one-off container"
-${DOCKER_COMPOSE_BIN} run --rm "${SERVICE_NAME}" python3 migrate.py
-
 echo "[deploy] recreate ${SERVICE_NAME}"
 ${DOCKER_COMPOSE_BIN} up -d --force-recreate "${SERVICE_NAME}"
 
 echo "[deploy] wait for container to become ready"
 sleep 5
+
+echo "[deploy] run migrations inside ${CONTAINER_NAME}"
+docker exec "${CONTAINER_NAME}" python3 migrate.py
+
+echo "[deploy] clean old one-off migrate containers if any"
+docker ps -aq --filter "name=${SERVICE_NAME}-run-" | xargs -r docker rm -f
 
 echo "[deploy] backend container status"
 docker ps --filter "name=${CONTAINER_NAME}"
