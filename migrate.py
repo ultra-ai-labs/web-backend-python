@@ -92,8 +92,16 @@ def execute_migration(conn, sql_file, force=False):
     with open(sql_file, 'r', encoding='utf-8') as f:
         sql_content = f.read()
     
-    # 分割 SQL 语句
-    statements = [s.strip() for s in sql_content.split(';') if s.strip() and not s.strip().startswith('--')]
+    # 去掉纯注释行后再分割 SQL，避免“文件以注释开头导致整段 SQL 被跳过”
+    cleaned_lines = []
+    for line in sql_content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('--'):
+            continue
+        cleaned_lines.append(line)
+
+    cleaned_sql = '\n'.join(cleaned_lines)
+    statements = [s.strip() for s in cleaned_sql.split(';') if s.strip()]
     
     cursor = conn.cursor()
     success_count = 0

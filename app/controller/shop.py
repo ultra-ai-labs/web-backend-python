@@ -135,7 +135,7 @@ def recharge_shop_order():
         phone = _resolve_phone(data)
         sku_type, quota = _resolve_quota_by_sku_type(data.get('sku_type'))
         amount, amount_valid = _resolve_amount(data.get('amount'))
-        is_new_user = bool(data.get('is_new_user', False))
+        is_new_user = data.get('is_new_user')
 
         if not order_no or sku_type is None or not username:
             return jsonify({'status': 400, 'msg': 'order_no, sku_type and username are required'}), 400
@@ -153,7 +153,21 @@ def recharge_shop_order():
         user = _get_user_by_username(username)
         created = False
 
-        if is_new_user:
+        # `is_new_user` omitted => auto mode:
+        # existing user -> recharge, missing user -> create and recharge.
+        if is_new_user is None:
+            if not user:
+                password = _build_initial_password(phone)
+                user = user_service.create_user(
+                    user_id=str(next_id()),
+                    username=username,
+                    password=password,
+                )
+                if not user:
+                    return jsonify({'status': 500, 'msg': 'create user failed'}), 500
+                created = True
+            is_new_user = created
+        elif bool(is_new_user):
             if not user:
                 password = _build_initial_password(phone)
                 user = user_service.create_user(
