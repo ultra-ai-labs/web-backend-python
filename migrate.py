@@ -13,6 +13,7 @@ from pathlib import Path
 import pymysql
 from dotenv import load_dotenv
 import time
+import re
 
 # 加载环境变量
 load_dotenv('.env.prod.local')
@@ -47,6 +48,13 @@ LEGACY_BOOTSTRAP_MIGRATIONS = {
         'reason': 'legacy bootstrap migration with destructive DROP TABLE statements',
     }
 }
+
+DESTRUCTIVE_SQL_PATTERNS = [
+    re.compile(r'^\s*DROP\s+TABLE\b', re.IGNORECASE),
+    re.compile(r'^\s*TRUNCATE\s+TABLE\b', re.IGNORECASE),
+    re.compile(r'^\s*DROP\s+DATABASE\b', re.IGNORECASE),
+    re.compile(r'^\s*DROP\s+SCHEMA\b', re.IGNORECASE),
+]
 
 def get_db_connection():
     """获取数据库连接"""
@@ -182,6 +190,31 @@ def repair_required_schema(conn):
     print(f"✅ Schema validation finished, repaired {repaired_count} item(s)\n")
     return True
 
+def is_destructive_statement(statement):
+    return any(pattern.search(statement) for pattern in DESTRUCTIVE_SQL_PATTERNS)
+
+def should_skip_destructive_migration(conn, migration_name, statements, force=False):
+    if force:
+        return False
+
+    destructive_statements = [stmt for stmt in statements if is_destructive_statement(stmt)]
+    if not destructive_statements:
+        return False
+
+    print(
+        f"⏭️  Skip destructive migration: {migration_name} "
+        f"(automatic deploy does not allow DROP/TRUNCATE statements)"
+    )
+    for stmt in destructive_statements:
+        preview = " ".join(stmt.split())
+        print(f"   ⚠️  blocked statement: {preview[:120]}")
+
+    if not is_migration_executed(conn, migration_name):
+        record_migration(conn, migration_name)
+        print(f"   📝 Recorded skipped destructive migration: {migration_name}")
+
+    return True
+
 def execute_migration(conn, sql_file, force=False):
     """执行单个迁移文件"""
     migration_name = sql_file.name
@@ -209,6 +242,9 @@ def execute_migration(conn, sql_file, force=False):
     if not statements:
         print(f"   ❌ No executable SQL statements found in: {migration_name}")
         return False
+
+    if should_skip_destructive_migration(conn, migration_name, statements, force):
+        return True
     
     cursor = conn.cursor()
     success_count = 0
