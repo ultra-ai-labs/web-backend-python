@@ -102,6 +102,9 @@ def execute_migration(conn, sql_file, force=False):
 
     cleaned_sql = '\n'.join(cleaned_lines)
     statements = [s.strip() for s in cleaned_sql.split(';') if s.strip()]
+    if not statements:
+        print(f"   ❌ No executable SQL statements found in: {migration_name}")
+        return False
     
     cursor = conn.cursor()
     success_count = 0
@@ -168,30 +171,34 @@ def main():
             if not migration_file.exists():
                 print(f"❌ Migration file not found: {migration_file}")
                 return 1
-            
-            execute_migration(conn, migration_file, force)
+
+            ok = execute_migration(conn, migration_file, force)
+            if not ok:
+                return 1
         else:
             # 执行所有迁移文件
             migration_files = sorted(migrations_dir.glob('*.sql'))
-            
+
             if not migration_files:
                 print("❌ No migration files found in 'migrations' directory")
                 return 1
-            
+
             print(f"📁 Found {len(migration_files)} migration file(s)\n")
-            
+
             executed_count = 0
             skipped_count = 0
-            
+
             for migration_file in migration_files:
                 migration_name = migration_file.name
                 if not force and is_migration_executed(conn, migration_name):
                     print(f"⏭️  Skipped (already executed): {migration_name}")
                     skipped_count += 1
                 else:
-                    execute_migration(conn, migration_file, force)
+                    ok = execute_migration(conn, migration_file, force)
+                    if not ok:
+                        return 1
                     executed_count += 1
-            
+
             print(f"\n📊 Summary: {executed_count} executed, {skipped_count} skipped")
         
         conn.close()
