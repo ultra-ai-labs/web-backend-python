@@ -41,6 +41,13 @@ SCHEMA_REPAIRS = [
     },
 ]
 
+LEGACY_BOOTSTRAP_MIGRATIONS = {
+    'add_quota.sql': {
+        'guard_tables': ['users', 'quota'],
+        'reason': 'legacy bootstrap migration with destructive DROP TABLE statements',
+    }
+}
+
 def get_db_connection():
     """获取数据库连接"""
     # 尝试从环境变量获取配置
@@ -88,6 +95,26 @@ def is_migration_executed(conn, migration_name):
         return count > 0
     finally:
         cursor.close()
+
+def should_skip_legacy_bootstrap_migration(conn, migration_name, force=False):
+    if force or migration_name not in LEGACY_BOOTSTRAP_MIGRATIONS:
+        return False
+
+    config = LEGACY_BOOTSTRAP_MIGRATIONS[migration_name]
+    existing_tables = [table for table in config['guard_tables'] if table_exists(conn, table)]
+    if not existing_tables:
+        return False
+
+    print(
+        f"⏭️  Skip legacy bootstrap migration: {migration_name} "
+        f"({config['reason']}; existing tables: {', '.join(existing_tables)})"
+    )
+
+    if not is_migration_executed(conn, migration_name):
+        record_migration(conn, migration_name)
+        print(f"   📝 Recorded skipped migration: {migration_name}")
+
+    return True
 
 def record_migration(conn, migration_name):
     """记录已执行的迁移"""
@@ -269,6 +296,8 @@ def main():
                 migration_name = migration_file.name
                 if not force and is_migration_executed(conn, migration_name):
                     print(f"⏭️  Skipped (already executed): {migration_name}")
+                    skipped_count += 1
+                elif should_skip_legacy_bootstrap_migration(conn, migration_name, force):
                     skipped_count += 1
                 else:
                     ok = execute_migration(conn, migration_file, force)
