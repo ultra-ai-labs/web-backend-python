@@ -129,20 +129,21 @@ class QuotaRepo:
         return self._retry_on_missing_analysised_quota(action, "updating total quota", user_id)
 
     def increment_total_quota(self, user_id, quota_delta):
+        normalized_quota_delta = int(quota_delta or 0)
+
         def action():
-            quota_delta = int(quota_delta or 0)
             quota = Quota.query.filter_by(user_id=user_id).first()
             if not quota:
                 quota = Quota(
                     user_id=user_id,
-                    total_quota=quota_delta,
+                    total_quota=normalized_quota_delta,
                     used_quota=0,
                     analysised_quota=0,
                     create_time=get_current_timestamp()
                 )
                 self.db.session.add(quota)
             else:
-                quota.total_quota = int(quota.total_quota or 0) + quota_delta
+                quota.total_quota = int(quota.total_quota or 0) + normalized_quota_delta
                 quota.update_time = get_current_timestamp()
             self.db.session.commit()
             return quota
