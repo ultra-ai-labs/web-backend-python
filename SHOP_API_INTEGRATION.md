@@ -174,9 +174,12 @@ POST /shop/order/recharge
 
 - `is_new_user`
   - 是否新用户
-  - 必填
+  - 可选
   - `true` 表示商城侧认为这是新开户
   - `false` 表示商城侧认为是已有账号充值
+  - 不传时，后端自动判断：
+    - 用户存在则直接充值
+    - 用户不存在则自动开户并充值
 
 - `username`
   - 必填
@@ -215,6 +218,20 @@ POST /shop/order/recharge
 
 - 若系统中不存在该 `username`
   - 返回用户不存在错误
+
+### 3. 不传 `is_new_user`
+
+- 若系统中存在该 `username`
+  - 直接充值
+  - 记录商城订单
+  - 返回 `recharge success`
+
+- 若系统中不存在该 `username`
+  - 自动创建用户
+  - 自动生成初始密码：`phone + ultra-ai`
+  - 按 `sku_type` 对应额度自动增加额度
+  - 记录商城订单
+  - 返回 `create user and recharge success`
 
 
 ## 成功返回示例
