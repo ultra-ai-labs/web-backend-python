@@ -20,5 +20,6 @@ jobs:
           script: |
             export PROJECT_DIR="${{ secrets.DEPLOY_PROJECT_DIR }}"
             export BRANCH="main"
+            export FORCE_GIT_SYNC="1"
             chmod +x "${PROJECT_DIR}/scripts/deploy_backend.sh"
             "${PROJECT_DIR}/scripts/deploy_backend.sh"

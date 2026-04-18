@@ -7,6 +7,7 @@ BRANCH="${BRANCH:-main}"
 SERVICE_NAME="${SERVICE_NAME:-backend}"
 CONTAINER_NAME="${CONTAINER_NAME:-ultra-ai-backend}"
 DOCKER_COMPOSE_BIN="${DOCKER_COMPOSE_BIN:-docker compose}"
+FORCE_GIT_SYNC="${FORCE_GIT_SYNC:-1}"
 
 echo "[deploy] project dir: ${PROJECT_DIR}"
 echo "[deploy] branch: ${BRANCH}"
@@ -23,8 +24,18 @@ if [ "${CURRENT_BRANCH}" != "${BRANCH}" ]; then
   git checkout "${BRANCH}"
 fi
 
-echo "[deploy] git pull --ff-only"
-git pull --ff-only origin "${BRANCH}"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "[deploy] detected local tracked changes:"
+  git status --short
+fi
+
+if [ "${FORCE_GIT_SYNC}" = "1" ]; then
+  echo "[deploy] force sync tracked files to origin/${BRANCH}"
+  git reset --hard "origin/${BRANCH}"
+else
+  echo "[deploy] git pull --ff-only"
+  git pull --ff-only origin "${BRANCH}"
+fi
 
 echo "[deploy] docker compose build ${SERVICE_NAME}"
 ${DOCKER_COMPOSE_BIN} build "${SERVICE_NAME}"
