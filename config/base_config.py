@@ -23,6 +23,10 @@ IP_PROXY_PROVIDER_NAME = os.getenv("IP_PROXY_PROVIDER_NAME", "kuaidaili")
 # 设置为True不会打开浏览器（无头浏览器），设置False会打开一个浏览器（小红书如果一直扫码登录不通过，打开浏览器手动过一下滑动验证码）
 HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 
+# Playwright 页面导航超时时间。抖音等站点在云服务器/Docker 环境里经常有慢资源，
+# 默认 30s 容易在 page.goto 首页阶段超时。
+PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = int(os.getenv("PLAYWRIGHT_NAVIGATION_TIMEOUT_MS", "60000"))
+
 # 是否保存登录状态
 SAVE_LOGIN_STATE = True
 

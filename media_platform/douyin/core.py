@@ -48,6 +48,14 @@ class DouYinCrawler(AbstractCrawler):
         self.task_id = task_id
         self.user_id = user_id
 
+    async def goto_index_page(self) -> None:
+        """Open Douyin home page with Docker-friendly navigation settings."""
+        await self.context_page.goto(
+            self.index_url,
+            wait_until="domcontentloaded",
+            timeout=config.PLAYWRIGHT_NAVIGATION_TIMEOUT_MS
+        )
+
     async def start(self) -> None:
         playwright_proxy_format, httpx_proxy_format = None, None
         if config.ENABLE_IP_PROXY:
@@ -60,14 +68,14 @@ class DouYinCrawler(AbstractCrawler):
             chromium = playwright.chromium
             self.browser_context = await self.launch_browser(
                 chromium,
-                None,
+                playwright_proxy_format,
                 self.user_agent,
                 headless=config.HEADLESS
             )
             # stealth.min.js is a js script to prevent the website from detecting the crawler.
             await self.browser_context.add_init_script(path="libs/stealth.min.js")
             self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url)
+            await self.goto_index_page()
 
             self.dy_client = await self.create_douyin_client(httpx_proxy_format)
             if not await self.dy_client.pong(browser_context=self.browser_context):
@@ -102,14 +110,14 @@ class DouYinCrawler(AbstractCrawler):
             chromium = playwright.chromium
             self.browser_context = await self.launch_browser(
                 chromium,
-                None,
+                playwright_proxy_format,
                 self.user_agent,
                 headless=config.HEADLESS
             )
             # stealth.min.js is a js script to prevent the website from detecting the crawler.
             await self.browser_context.add_init_script(path="libs/stealth.min.js")
             self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url)
+            await self.goto_index_page()
 
             self.dy_client = await self.create_douyin_client(httpx_proxy_format)
             if not await self.dy_client.pong(browser_context=self.browser_context):
