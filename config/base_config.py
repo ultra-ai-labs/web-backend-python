@@ -74,6 +74,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # DEEPSEEK 配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
+# 评论分析 LLM（OpenAI 兼容；换厂商/模型只改 .env，代码不动）
+# 默认回退到 DeepSeek，.env 中可指向百度千帆 ERNIE 等任意 OpenAI 兼容服务
+LLM_API_KEY = os.getenv("LLM_API_KEY", "") or DEEPSEEK_API_KEY
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+
 # ANALYSIS_THREAD 分析线程数
 ANALYSIS_THREAD_NUM = int(os.getenv("ANALYSIS_THREAD_NUM", "6"))
 

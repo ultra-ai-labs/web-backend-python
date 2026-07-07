@@ -44,6 +44,16 @@ def retry_on_exception(max_retries=3, delay=1, fallback_func=None):
     return decorator
 
 
+def call_llm(messages):
+    """统一的评论分析 LLM 调用（OpenAI 兼容）。
+    厂商/模型/密钥由 config.LLM_* 决定，换厂商只改 .env。模块级函数，便于 ProcessPool 子进程复用。
+    """
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL,
+                    max_retries=2, timeout=60)
+    response = client.chat.completions.create(model=config.LLM_MODEL, messages=messages)
+    return response.choices[0].message.content
+
+
 def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
     """Worker to run inside a separate process to perform model call.
     It returns the analysis result (string) via return_q.put(result_str).
@@ -81,10 +91,8 @@ def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
         except Exception:
             output_fields = output_fields_data
 
-        # Make a lightweight direct request to Deepseek (avoid instantiating full service)
+        # Make a lightweight model request via the configured LLM (OpenAI 兼容)
         try:
-            deepseek_key = config.DEEPSEEK_API_KEY
-            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com/")
             # build messages similar to gpt4_analysis
             output_fields_str = "\n".join([f"{f.key}: {f.explanation}" for f in output_fields])
             system_prompt = f"""
@@ -97,8 +105,7 @@ def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
                 """
             user_prompt = f"评论：{getattr(comment, 'content', '')}\n用户昵称：{getattr(comment, 'nickname', '')}\nIP地址位置：{getattr(comment, 'ip_location', '')}"
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            response = client.chat.completions.create(model="deepseek-chat", messages=messages)
-            result = response.choices[0].message.content
+            result = call_llm(messages)
         except Exception:
             result = json.dumps({})
         return_q.put(result)
@@ -138,8 +145,6 @@ def _gpt_worker_process(comment_data, analysis_request, output_fields_data):
             output_fields = output_fields_data
 
         try:
-            deepseek_key = config.DEEPSEEK_API_KEY
-            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com/")
             output_fields_str = "\n".join([f"{f.key}: {f.explanation}" for f in output_fields])
             system_prompt = f"""
                 #任务背景和需求
@@ -151,8 +156,7 @@ def _gpt_worker_process(comment_data, analysis_request, output_fields_data):
                 """
             user_prompt = f"评论：{getattr(comment, 'content', '')}\n用户昵称：{getattr(comment, 'nickname', '')}\nIP地址位置：{getattr(comment, 'ip_location', '')}"
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            response = client.chat.completions.create(model="deepseek-chat", messages=messages)
-            result = response.choices[0].message.content
+            result = call_llm(messages)
         except Exception:
             result = json.dumps({})
         return result
@@ -773,17 +777,8 @@ class CommentAnalysisService:
 
 
     def handle_deepseek(self, messages):
-        model = "deepseek-chat"
-        deepseek_key = config.DEEPSEEK_API_KEY
-
-        client = OpenAI(api_key=deepseek_key,
-                        base_url="https://api.deepseek.com/")
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-        )
-        analysis_result = response.choices[0].message.content
-        return analysis_result
+        # 走统一的可配置 LLM（厂商/模型由 .env 的 LLM_* 决定）
+        return call_llm(messages)
 
     def handle_gpt4o(self, messages):
         url = "https://zg-cloud-model-service.replit.app/chat_openai"

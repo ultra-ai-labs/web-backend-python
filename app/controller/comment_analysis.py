@@ -116,8 +116,19 @@ def stop_analysis():
             except Exception:
                 pass
             return jsonify({"status": 200, "msg": "Analysis stopped"}), 200
-        else:
-            return jsonify({"status": 404, "msg": "No running analysis found for this task"}), 404
+
+        # 内存里没有运行中的分析（通常是后端重启或分析线程异常退出留下的“孤儿”状态）。
+        # 若 DB 仍标记为非终态（RUNNING/INITIAL），把它重置为 STOPPED，让前端能解除“操作中”并重新开始，
+        # 而不是死锁在该状态、点停止只能拿到 404。
+        step = task_step_repo.get_task_step_by_task_id_and_type(task_id, TaskStepType.ANALYSIS)
+        if step and step.state not in (TaskStepStatus.FINISH, TaskStepStatus.STOPPED):
+            try:
+                task_step_repo.update_task_step_status(task_id, TaskStepType.ANALYSIS, TaskStepStatus.STOPPED)
+            except Exception:
+                pass
+            return jsonify({"status": 200, "msg": "No active analysis; task state reset to stopped"}), 200
+
+        return jsonify({"status": 404, "msg": "No running analysis found for this task"}), 404
     except Exception as e:
         return jsonify({"status": 500, "msg": f"error: {e}"}), 500
 
