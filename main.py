@@ -631,15 +631,14 @@ def handle_gpt4o(messages):
 
 
 def handle_deepseek(messages):
-    model = "deepseek-chat"
-    
-    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
-    if not DEEPSEEK_API_KEY:
-        raise ValueError("未能获取到 DEEPSEEK_API_KEY，请检查 .env 文件是否正确配置。")
+    # 模型/厂商/密钥统一由环境变量 LLM_* 决定（OpenAI 兼容），不再硬编码 deepseek-chat
+    model = config.LLM_MODEL
+    api_key = config.LLM_API_KEY
+    if not api_key:
+        raise ValueError("未能获取到 LLM_API_KEY（或回退的 DEEPSEEK_API_KEY），请检查 .env 是否正确配置。")
 
-    client = OpenAI(api_key=DEEPSEEK_API_KEY,
-                    base_url="https://api.deepseek.com/")
-    # 针对OpenAI GPT-4的处理逻辑
+    client = OpenAI(api_key=api_key,
+                    base_url=config.LLM_BASE_URL)
     response = client.chat.completions.create(
         model=model,
         messages=messages,
