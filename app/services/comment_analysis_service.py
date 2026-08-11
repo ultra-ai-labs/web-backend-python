@@ -8,12 +8,10 @@ from threading import Lock, Thread, Event
 from multiprocessing import Process, Queue
 from concurrent.futures import ProcessPoolExecutor
 
-import openai
 import pandas as pd
 import qiniu
 from flask import current_app, copy_current_request_context, g
 from openai import OpenAI
-import requests
 from qcloud_cos import CosConfig, CosS3Client
 
 import config
@@ -45,12 +43,22 @@ def retry_on_exception(max_retries=3, delay=1, fallback_func=None):
 
 
 def call_llm(messages):
-    """统一的评论分析 LLM 调用（OpenAI 兼容）。
-    厂商/模型/密钥由 config.LLM_* 决定，换厂商只改 .env。模块级函数，便于 ProcessPool 子进程复用。
-    """
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL,
-                    max_retries=2, timeout=60)
-    response = client.chat.completions.create(model=config.LLM_MODEL, messages=messages)
+    """调用由 config.LLM_* 配置的 OpenAI 兼容模型。"""
+    if not config.LLM_API_KEY:
+        raise ValueError(
+            "未能获取到 LLM_API_KEY、TOKENROUTER_API_KEY 或 "
+            "DEEPSEEK_API_KEY，请检查 .env 配置。"
+        )
+    client = OpenAI(
+        api_key=config.LLM_API_KEY,
+        base_url=config.LLM_BASE_URL,
+        max_retries=2,
+        timeout=60,
+    )
+    response = client.chat.completions.create(
+        model=config.LLM_MODEL,
+        messages=messages,
+    )
     return response.choices[0].message.content
 
 
@@ -554,16 +562,8 @@ class CommentAnalysisService:
 
 
     def fallback_analysis(self, comment, task_id, platform, request, output_fields):
-        try:
-            result = self.handle_gpt4o(self.create_gpt4o_messages(comment, request.analysis_request, output_fields))
-            clean_result = result.replace("```json", "").replace("```", "").strip()
-            json_result = json.loads(clean_result)
-        except json.JSONDecodeError as e:
-            utils.logger.info(f"JSON解析失败: {e}")
-            json_result = self._generate_default_json_result(output_fields)
-        except Exception as e:
-            utils.logger.info(f"意外错误: {e}")
-            json_result = self._generate_default_json_result(output_fields)
+        utils.logger.info("模型分析重试失败，使用默认分析结果")
+        json_result = self._generate_default_json_result(output_fields)
         if platform == "dy":
             self.douyin_comment_repo.update_comment_by_comment_id(comment.comment_id, json_result, task_id)
         else:
@@ -707,21 +707,11 @@ class CommentAnalysisService:
             raise Exception(f"上传到腾讯云失败: {e}")
 
     def gpt4_analysis(self, comment, analysis_request, output_fields):
-        # 获取 OpenAI API 密钥
-        OPENAI_API_KEY = config.OPENAI_API_KEY
-        if not OPENAI_API_KEY:
-            raise ValueError("未能获取到 OPENAI_API_KEY，请检查 .env 文件是否正确配置。")
-
-        # 设置 OpenAI API 密钥
-        openai.api_key = OPENAI_API_KEY
-
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
         comment_content = comment.content
         ip_location = comment.ip_location
         try:
             user_signature = comment.user_signature
-        except Exception as e:
+        except Exception:
             user_signature = ""
         nickname = comment.nickname
 
@@ -739,32 +729,7 @@ class CommentAnalysisService:
         messages = [{"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}]
 
-        analysis_result = self.handle_deepseek(messages)
-
-        return analysis_result
-
-    def create_gpt4o_messages(self, comment, analysis_request, output_fields):
-        comment_content = comment.content
-        ip_location = comment.ip_location
-        try:
-            user_signature = comment.user_signature
-        except Exception as e:
-            user_signature = ""
-        nickname = comment.nickname
-
-        output_fields_str = "\n".join([f"{field.key}: {field.explanation}" for field in output_fields])
-        system_prompt = f"""
-                   #任务背景和需求
-                   {analysis_request}
-
-                   # 结果
-                   请输出一个包含以下键的JSON对象：
-                   {output_fields_str}
-                   """
-        user_prompt = self.create_prompt(comment_content, ip_location, user_signature, nickname)
-
-        return [{"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}]
+        return call_llm(messages)
 
 
     def create_prompt(self, comment, ip_location, user_signature, nickname):
@@ -779,19 +744,4 @@ class CommentAnalysisService:
     def handle_deepseek(self, messages):
         # 走统一的可配置 LLM（厂商/模型由 .env 的 LLM_* 决定）
         return call_llm(messages)
-
-    def handle_gpt4o(self, messages):
-        url = "https://zg-cloud-model-service.replit.app/chat_openai"
-        response = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(messages)
-        )
-
-        if response.status_code == 200:
-            response_json = response.json()
-            analysis_result = response_json.get('choices')[0].get('message').get('content')
-        else:
-            raise ValueError(f"请求失败，状态码: {response.status_code}, 响应内容: {response.text}")
-        return analysis_result
 

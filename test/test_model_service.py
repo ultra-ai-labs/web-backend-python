@@ -1,22 +1,22 @@
-# 深度求索
-import os
-from dotenv import load_dotenv
+# 模型服务连通性检查
 from openai import OpenAI
 
-load_dotenv()
+import config
 
 
 def handle_deepseek(messages):
-    # 统一从环境变量读取（OpenAI 兼容），不再硬编码 deepseek-chat
-    model = os.getenv('LLM_MODEL', 'deepseek-v4-flash')
-    api_key = os.getenv('LLM_API_KEY') or os.getenv('DEEPSEEK_API_KEY', '')
-    base_url = os.getenv('LLM_BASE_URL', 'https://api.deepseek.com/')
-    if not api_key:
-        raise ValueError("未能获取到 LLM_API_KEY（或回退的 DEEPSEEK_API_KEY），请检查 .env 文件是否正确配置。")
+    if not config.LLM_API_KEY:
+        raise ValueError(
+            "未能获取到 LLM_API_KEY、TOKENROUTER_API_KEY 或 "
+            "DEEPSEEK_API_KEY，请检查 .env 配置。"
+        )
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(
+        api_key=config.LLM_API_KEY,
+        base_url=config.LLM_BASE_URL,
+    )
     return client.chat.completions.create(
-        model=model,
+        model=config.LLM_MODEL,
         messages=messages,
     )
 

@@ -68,15 +68,27 @@ TencentBucketName = os.getenv("TENCENT_BUCKET_NAME", "")
 TencentCdnDomain = os.getenv("TENCENT_CDN_DOMAIN", "")
 TencentRegion = os.getenv("TENCENT_REGION", "ap-guangzhou")
 
-# OPENAI配置
+# OPENAI配置（仅供仍需直连 OpenAI 的旧功能使用）
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# DEEPSEEK 配置
+# DEEPSEEK 旧配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
-# 评论分析 LLM（OpenAI 兼容；换厂商/模型只改 .env，代码不动）
-# 默认回退到 DeepSeek，.env 中可指向百度千帆 ERNIE 等任意 OpenAI 兼容服务
-LLM_API_KEY = os.getenv("LLM_API_KEY", "") or DEEPSEEK_API_KEY
+# TokenRouter 配置
+TOKENROUTER_API_KEY = os.getenv("TOKENROUTER_API_KEY", "")
+
+
+def resolve_llm_api_key(environ=None):
+    source = os.environ if environ is None else environ
+    return (
+        source.get("LLM_API_KEY", "")
+        or source.get("TOKENROUTER_API_KEY", "")
+        or source.get("DEEPSEEK_API_KEY", "")
+    )
+
+
+# 评论分析 LLM（OpenAI 兼容）
+LLM_API_KEY = resolve_llm_api_key()
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/")
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
