@@ -17,9 +17,9 @@ def check_user_quota(user_id):
         # 考虑到安全性，通常如果没有记录应该提示额度不足或初始额度为 0
         return False, "未找到额度记录，请联系管理员或前往订阅页面"
     
-    # 计算总消耗：爬虫配额 + 分析配额
-    total_used = int(quota.used_quota or 0) + int(quota.analysised_quota or 0)
-    if total_used >= quota.total_quota:
-        return False, f"额度已用尽 ({total_used}/{quota.total_quota})，请前往订阅页面充值"
+    # 只有评论采集数量参与额度限制；分析数量仅作为独立统计值。
+    used_quota = int(quota.used_quota or 0)
+    if used_quota >= quota.total_quota:
+        return False, f"额度已用尽 ({used_quota}/{quota.total_quota})，请前往订阅页面充值"
     
     return True, "Success"
