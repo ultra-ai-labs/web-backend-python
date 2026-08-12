@@ -43,20 +43,16 @@ def retry_on_exception(max_retries=3, delay=1, fallback_func=None):
 
 
 def call_llm(messages):
-    """调用由 config.LLM_* 配置的 OpenAI 兼容模型。"""
-    if not config.LLM_API_KEY:
-        raise ValueError(
-            "未能获取到 LLM_API_KEY、TOKENROUTER_API_KEY 或 "
-            "DEEPSEEK_API_KEY，请检查 .env 配置。"
-        )
+    """按 TokenRouter、DeepSeek 的配置顺序调用一次模型。"""
+    model_config = config.resolve_analysis_model_config()
     client = OpenAI(
-        api_key=config.LLM_API_KEY,
-        base_url=config.LLM_BASE_URL,
+        api_key=model_config["api_key"],
+        base_url=model_config["base_url"],
         max_retries=2,
         timeout=60,
     )
     response = client.chat.completions.create(
-        model=config.LLM_MODEL,
+        model=model_config["model"],
         messages=messages,
     )
     return response.choices[0].message.content
@@ -742,6 +738,5 @@ class CommentAnalysisService:
 
 
     def handle_deepseek(self, messages):
-        # 走统一的可配置 LLM（厂商/模型由 .env 的 LLM_* 决定）
+        # 与批量分析共用 TokenRouter → DeepSeek 的供应商选择规则。
         return call_llm(messages)
-

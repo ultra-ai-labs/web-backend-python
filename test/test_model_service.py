@@ -5,18 +5,13 @@ import config
 
 
 def handle_deepseek(messages):
-    if not config.LLM_API_KEY:
-        raise ValueError(
-            "未能获取到 LLM_API_KEY、TOKENROUTER_API_KEY 或 "
-            "DEEPSEEK_API_KEY，请检查 .env 配置。"
-        )
-
+    model_config = config.resolve_analysis_model_config()
     client = OpenAI(
-        api_key=config.LLM_API_KEY,
-        base_url=config.LLM_BASE_URL,
+        api_key=model_config["api_key"],
+        base_url=model_config["base_url"],
     )
     return client.chat.completions.create(
-        model=config.LLM_MODEL,
+        model=model_config["model"],
         messages=messages,
     )
 

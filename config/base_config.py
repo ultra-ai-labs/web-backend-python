@@ -71,26 +71,42 @@ TencentRegion = os.getenv("TENCENT_REGION", "ap-guangzhou")
 # OPENAI配置（仅供仍需直连 OpenAI 的旧功能使用）
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# DEEPSEEK 旧配置
+# DeepSeek 直连配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 # TokenRouter 配置
 TOKENROUTER_API_KEY = os.getenv("TOKENROUTER_API_KEY", "")
 
+TOKENROUTER_BASE_URL = "https://api.tokenrouter.cheap/v1"
+TOKENROUTER_MODEL = "deepseek-v4-flash-0731"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-v4-flash"
 
-def resolve_llm_api_key(environ=None):
+
+def resolve_analysis_model_config(environ=None):
+    """按 TokenRouter、DeepSeek 的顺序选择一次分析模型供应商。"""
     source = os.environ if environ is None else environ
-    return (
-        source.get("LLM_API_KEY", "")
-        or source.get("TOKENROUTER_API_KEY", "")
-        or source.get("DEEPSEEK_API_KEY", "")
+    tokenrouter_key = source.get("TOKENROUTER_API_KEY", "").strip()
+    if tokenrouter_key:
+        return {
+            "provider": "tokenrouter",
+            "api_key": tokenrouter_key,
+            "base_url": TOKENROUTER_BASE_URL,
+            "model": TOKENROUTER_MODEL,
+        }
+
+    deepseek_key = source.get("DEEPSEEK_API_KEY", "").strip()
+    if deepseek_key:
+        return {
+            "provider": "deepseek",
+            "api_key": deepseek_key,
+            "base_url": DEEPSEEK_BASE_URL,
+            "model": DEEPSEEK_MODEL,
+        }
+
+    raise ValueError(
+        "未配置 TOKENROUTER_API_KEY 或 DEEPSEEK_API_KEY，请检查 .env 配置。"
     )
-
-
-# 评论分析 LLM（OpenAI 兼容）
-LLM_API_KEY = resolve_llm_api_key()
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/")
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
 # ANALYSIS_THREAD 分析线程数
 ANALYSIS_THREAD_NUM = int(os.getenv("ANALYSIS_THREAD_NUM", "6"))
