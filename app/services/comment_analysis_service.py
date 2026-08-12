@@ -48,14 +48,185 @@ def call_llm(messages):
     client = OpenAI(
         api_key=model_config["api_key"],
         base_url=model_config["base_url"],
-        max_retries=2,
-        timeout=60,
+        # 批量补偿由业务层按缺失 comment_id 控制，禁用 SDK 隐式整批重试。
+        max_retries=0,
+        timeout=getattr(config, "ANALYSIS_BATCH_CALL_TIMEOUT", 180),
     )
     response = client.chat.completions.create(
         model=model_config["model"],
         messages=messages,
+        response_format={"type": "json_object"},
+        max_tokens=getattr(config, "ANALYSIS_MAX_OUTPUT_TOKENS", 12000),
+        extra_body={"thinking": {"type": "disabled"}},
     )
     return response.choices[0].message.content
+
+
+def chunked(items, batch_size):
+    """按固定上限切分列表，最后一批允许不足 batch_size。"""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be greater than zero")
+    for index in range(0, len(items), batch_size):
+        yield items[index:index + batch_size]
+
+
+def _field_value(field, name):
+    if isinstance(field, dict):
+        return field.get(name, "")
+    return getattr(field, name, "")
+
+
+def build_batch_messages(comment_data_list, analysis_request, output_fields_data):
+    """为一批评论构建一次模型请求，并保留调用方要求的全部输出字段。"""
+    output_fields = [
+        {
+            "key": _field_value(field, "key"),
+            "explanation": _field_value(field, "explanation"),
+        }
+        for field in output_fields_data
+        if _field_value(field, "key")
+    ]
+    output_fields_str = "\n".join(
+        f"- {field['key']}: {field['explanation']}"
+        for field in output_fields
+    )
+    system_prompt = f"""
+# 任务背景和需求
+{analysis_request}
+
+# 批量输出要求
+你将收到一组评论。每条评论都必须独立分析，不能合并、遗漏或改变 comment_id。
+请只输出一个 JSON 对象，格式为：
+{{"items":[{{"comment_id":"原始ID","字段名":"分析结果"}}]}}
+items 中必须恰好包含每个输入 comment_id 一次，并为每条评论完整输出以下全部字段：
+{output_fields_str}
+""".strip()
+    user_prompt = json.dumps(
+        [
+            {
+                "comment_id": str(comment.get("comment_id", "")),
+                "评论": comment.get("content", "") or "",
+                "用户昵称": comment.get("nickname", "") or "",
+                "IP地址位置": comment.get("ip_location", "") or "",
+            }
+            for comment in comment_data_list
+        ],
+        ensure_ascii=False,
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def parse_batch_result(raw_result, expected_comment_ids, output_field_keys):
+    """校验批量返回，只接收 ID 与全部字段均完整的评论结果。"""
+    clean_result = raw_result.replace("```json", "").replace("```", "").strip()
+    payload = json.loads(clean_result)
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return {}
+
+    expected_ids = {str(comment_id) for comment_id in expected_comment_ids}
+    field_keys = [key for key in output_field_keys if key]
+    parsed = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        comment_id = str(item.get("comment_id", ""))
+        if comment_id not in expected_ids or comment_id in parsed:
+            continue
+        if any(key not in item for key in field_keys):
+            continue
+        parsed[comment_id] = {key: item[key] for key in field_keys}
+    return parsed
+
+
+def analyze_comment_batch(comment_data_list, analysis_request, output_fields_data):
+    """一次请求分析一批评论，返回 comment_id 到原有字段字典的映射。"""
+    messages = build_batch_messages(
+        comment_data_list,
+        analysis_request,
+        output_fields_data,
+    )
+    raw_result = call_llm(messages)
+    comment_ids = [str(comment.get("comment_id", "")) for comment in comment_data_list]
+    output_field_keys = [
+        _field_value(field, "key")
+        for field in output_fields_data
+        if _field_value(field, "key")
+    ]
+    return parse_batch_result(raw_result, comment_ids, output_field_keys)
+
+
+def _default_json_result(output_fields_data):
+    result = {}
+    for field in output_fields_data:
+        key = _field_value(field, "key")
+        if not key:
+            continue
+        if key == "分析理由":
+            result[key] = "分析失败， 格式错误"
+        else:
+            result[key] = ""
+    return result
+
+
+def analyze_comment_batch_with_recovery(
+        comment_data_list,
+        analysis_request,
+        output_fields_data,
+        split_depth=0,
+        max_split_depth=2,
+):
+    """仅补偿批量返回中缺失的评论，整批失败时最多二分两层。"""
+    if not comment_data_list:
+        return {}
+    try:
+        results = analyze_comment_batch(
+            comment_data_list,
+            analysis_request,
+            output_fields_data,
+        )
+    except Exception as error:
+        utils.logger.warning("批量模型分析失败（%s 条）: %s", len(comment_data_list), error)
+        results = {}
+
+    missing_comments = [
+        comment
+        for comment in comment_data_list
+        if str(comment.get("comment_id", "")) not in results
+    ]
+    if missing_comments and split_depth < max_split_depth:
+        # 部分缺失时仅重试缺失项；整批失败时二分，避免再次发送完整批次。
+        retry_batches = [missing_comments]
+        if len(missing_comments) == len(comment_data_list) and len(missing_comments) > 1:
+            midpoint = (len(missing_comments) + 1) // 2
+            retry_batches = [missing_comments[:midpoint], missing_comments[midpoint:]]
+        for retry_batch in retry_batches:
+            results.update(analyze_comment_batch_with_recovery(
+                retry_batch,
+                analysis_request,
+                output_fields_data,
+                split_depth=split_depth + 1,
+                max_split_depth=max_split_depth,
+            ))
+
+    default_result = _default_json_result(output_fields_data)
+    for comment in comment_data_list:
+        comment_id = str(comment.get("comment_id", ""))
+        if comment_id not in results:
+            results[comment_id] = dict(default_result)
+    return results
+
+
+def _gpt_worker_process_batch(comment_data_list, analysis_request, output_fields_data):
+    """进程池入口：一批评论共享一次提示词和一次模型请求。"""
+    return analyze_comment_batch_with_recovery(
+        comment_data_list,
+        analysis_request,
+        output_fields_data,
+    )
 
 
 def _gpt_worker(comment_data, analysis_request, output_fields_data, return_q):
@@ -266,25 +437,31 @@ class CommentAnalysisService:
             self._processing_comments[key] = set()
 
         @copy_current_request_context
-        @retry_on_exception(max_retries=3, delay=2, fallback_func=self.fallback_analysis)
-        def analyze_comments_chunk(comment, task_id, platform, request, output_fields):
+        def analyze_comments_batch(comments_batch, task_id, platform, request, output_fields):
             try:
                 if stop_event.is_set():
                     return
-                if comment.extra_data is not None:
+                comments_batch = [
+                    comment for comment in comments_batch
+                    if comment.extra_data is None
+                ]
+                if not comments_batch:
                     return
 
-                # prepare serializable comment data for subprocess
-                comment_data = {
-                    'content': getattr(comment, 'content', ''),
-                    'ip_location': getattr(comment, 'ip_location', ''),
-                    'user_signature': getattr(comment, 'user_signature', ''),
-                    'nickname': getattr(comment, 'nickname', ''),
-                    'comment_id': getattr(comment, 'comment_id', None),
-                    'user_id': getattr(comment, 'user_id', None),
-                    'aweme_id': getattr(comment, 'aweme_id', None),
-                    'note_id': getattr(comment, 'note_id', None)
-                }
+                # 一批评论序列化后只发起一次模型请求。
+                comment_data_list = [
+                    {
+                        'content': getattr(comment, 'content', ''),
+                        'ip_location': getattr(comment, 'ip_location', ''),
+                        'user_signature': getattr(comment, 'user_signature', ''),
+                        'nickname': getattr(comment, 'nickname', ''),
+                        'comment_id': getattr(comment, 'comment_id', None),
+                        'user_id': getattr(comment, 'user_id', None),
+                        'aweme_id': getattr(comment, 'aweme_id', None),
+                        'note_id': getattr(comment, 'note_id', None),
+                    }
+                    for comment in comments_batch
+                ]
 
                 # prepare output fields as plain dicts for pickling
                 output_fields_data = []
@@ -297,20 +474,25 @@ class CommentAnalysisService:
                 # submit to persistent process pool
                 future = None
                 try:
-                    future = self._process_pool.submit(_gpt_worker_process, comment_data, request.analysis_request, output_fields_data)
+                    future = self._process_pool.submit(
+                        _gpt_worker_process_batch,
+                        comment_data_list,
+                        request.analysis_request,
+                        output_fields_data,
+                    )
                     with self.lock:
                         futs = self._child_futures.setdefault(key, [])
                         futs.append(future)
 
-                    timeout = getattr(config, 'ANALYSIS_CALL_TIMEOUT', 60)
+                    timeout = getattr(config, 'ANALYSIS_BATCH_CALL_TIMEOUT', 180)
                     try:
-                        result = future.result(timeout=timeout)
+                        batch_results = future.result(timeout=timeout)
                     except Exception:
                         try:
                             future.cancel()
                         except Exception:
                             pass
-                        result = None
+                        batch_results = {}
                 finally:
                     with self.lock:
                         try:
@@ -322,25 +504,21 @@ class CommentAnalysisService:
                 if stop_event.is_set():
                     return
 
-                # process result
-                if not result:
-                    json_result = self._generate_default_json_result(output_fields)
-                else:
-                    try:
-                        clean_result = result.replace("```json", "").replace("```", "").strip()
-                        json_result = json.loads(clean_result)
-                    except Exception:
-                        json_result = self._generate_default_json_result(output_fields)
-
-                # append to pending updates (batch commit handled by flusher)
+                default_result = self._generate_default_json_result(output_fields)
+                original_ids = {
+                    str(comment.comment_id): comment.comment_id
+                    for comment in comments_batch
+                }
                 with self.lock:
                     pending = self._pending_updates.setdefault(key, [])
-                    pending.append((comment.comment_id, json_result))
+                    for string_id, original_id in original_ids.items():
+                        json_result = batch_results.get(string_id, default_result)
+                        pending.append((original_id, json_result))
             finally:
-                # Always remove from processing set when done (success or failure)
                 with self.lock:
                     processing_set = self._processing_comments.get(key, set())
-                    processing_set.discard(comment.comment_id)
+                    for comment in comments_batch:
+                        processing_set.discard(comment.comment_id)
 
 
         @copy_current_request_context
@@ -391,23 +569,21 @@ class CommentAnalysisService:
                     for comment in comments:
                         processing_set.add(comment.comment_id)
 
-                num_threads_to_use = min(num_threads, len(comments))
-                chunk_size = max(1, len(comments) // num_threads_to_use)
+                batch_size = getattr(config, 'ANALYSIS_BATCH_SIZE', 100)
+                comment_batches = list(chunked(comments, batch_size))
+                num_threads_to_use = min(num_threads, len(comment_batches))
                 with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads_to_use) as executor:
-                    futures = []
-                    for i in range(num_threads_to_use - 1):
-                        chunk = comments[i * chunk_size:(i + 1) * chunk_size]
-                        for comment in chunk:
-                            futures.append(
-                                executor.submit(analyze_comments_chunk, comment, task_id, task.platform, request,
-                                                output_fields))
-
-                    remaining_comments = comments[(num_threads_to_use - 1) * chunk_size:]
-                    if remaining_comments:
-                        for comment in remaining_comments:
-                            futures.append(
-                                executor.submit(analyze_comments_chunk, comment, task_id, task.platform, request,
-                                                output_fields))
+                    futures = [
+                        executor.submit(
+                            analyze_comments_batch,
+                            comments_batch,
+                            task_id,
+                            task.platform,
+                            request,
+                            output_fields,
+                        )
+                        for comments_batch in comment_batches
+                    ]
 
                     for future in concurrent.futures.as_completed(futures):
                         try:

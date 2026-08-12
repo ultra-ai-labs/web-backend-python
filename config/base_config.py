@@ -110,6 +110,9 @@ def resolve_analysis_model_config(environ=None):
 
 # ANALYSIS_THREAD 分析线程数
 ANALYSIS_THREAD_NUM = int(os.getenv("ANALYSIS_THREAD_NUM", "6"))
+ANALYSIS_BATCH_SIZE = int(os.getenv("ANALYSIS_BATCH_SIZE", "100"))
+ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("ANALYSIS_MAX_OUTPUT_TOKENS", "12000"))
+ANALYSIS_BATCH_CALL_TIMEOUT = int(os.getenv("ANALYSIS_BATCH_CALL_TIMEOUT", "180"))
 
 
 # 指定小红书需要爬虫的笔记ID列表
